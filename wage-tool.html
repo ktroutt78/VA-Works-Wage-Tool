@@ -604,6 +604,34 @@
       });
     })();
 
+    // 2b. Sanitize non-monotonic percentiles. The BLS OEWS "#" top-code marker
+    //     (annual wages ≥ ~$239,200) sometimes survives the Snowflake export as
+    //     a literal 0, producing entries like p90=0 with p75=$234K. That breaks
+    //     the band layout (negative width, off-screen) and pulls computeDomain
+    //     onto just the salary value. Cascade-clamp each upper percentile to
+    //     the next lower one so the band still renders — just without an upper
+    //     tail when the data is bad. The fix is non-destructive when the data
+    //     is already monotonic. Track the patch count for the source-note.
+    let _patched = 0;
+    (function sanitizePercentiles() {
+      for (const j of DATA.jobs) {
+        for (const aid in (j.areas || {})) {
+          const e = j.areas[aid];
+          if (!e) continue;
+          const before = e.p10 + ',' + e.p25 + ',' + e.p50 + ',' + e.p75 + ',' + e.p90;
+          if (e.p25 < e.p10) e.p25 = e.p10;
+          if (e.p50 < e.p25) e.p50 = e.p25;
+          if (e.p75 < e.p50) e.p75 = e.p50;
+          if (e.p90 < e.p75) e.p90 = e.p75;
+          const after = e.p10 + ',' + e.p25 + ',' + e.p50 + ',' + e.p75 + ',' + e.p90;
+          if (before !== after) _patched++;
+        }
+      }
+      if (_patched) {
+        console.warn('[wage-tool] patched ' + _patched + ' non-monotonic percentile entries (likely BLS top-code suppression mishandled in export).');
+      }
+    })();
+
     const AREAS  = DATA.areas;
     const JOBS   = DATA.jobs;
     const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
