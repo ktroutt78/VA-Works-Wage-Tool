@@ -1,0 +1,10 @@
+# AI coding session artifacts (Cortex Code logs and prompts)
+.cortex/
+.cortex-*.log
+.cortex-prompt*.txt
+
+# Vercel CLI project linkage (per-machine, not for source control)
+.vercel/
+
+# macOS
+.DS_Store

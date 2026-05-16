@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Highcharts Dashboards — Sales Demo</title>
+
+  <!-- Highcharts core + Dashboards via jsdelivr (mirrors code.highcharts.com) -->
+  <script src="https://cdn.jsdelivr.net/npm/highcharts/highcharts.js"
+          onload="window.__loaded.highcharts=true"
+          onerror="window.__failed.push('highcharts.js')"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@highcharts/dashboards/dashboards.js"
+          onload="window.__loaded.dashboards=true"
+          onerror="window.__failed.push('dashboards.js')"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@highcharts/dashboards/modules/layout.js"
+          onload="window.__loaded.layout=true"
+          onerror="window.__failed.push('layout.js')"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@highcharts/dashboards/datagrid.js"
+          onload="window.__loaded.datagrid=true"
+          onerror="window.__failed.push('datagrid.js')"></script>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highcharts/dashboards/css/dashboards.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highcharts/dashboards/css/datagrid.css" />
+
+  <script>
+    window.__loaded = {};
+    window.__failed = [];
+  </script>
+
+  <style>
+    html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; }
+    header { padding: 16px 24px; background: #1f2937; color: #fff; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    header p  { margin: 4px 0 0; font-size: 12px; opacity: 0.75; }
+    #container { padding: 16px; }
+    .filter-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 24px; background: #fff; border-bottom: 1px solid #e5e7eb;
+      font-size: 13px; color: #374151;
+    }
+    .filter-bar .pill {
+      padding: 4px 10px; background: #eef2ff; color: #4338ca;
+      border-radius: 999px; font-weight: 500;
+    }
+    .filter-bar button {
+      background: transparent; border: 1px solid #d1d5db; padding: 4px 10px;
+      border-radius: 6px; cursor: pointer; color: #374151;
+    }
+    .filter-bar button:hover { background: #f3f4f6; }
+    .kpi-wrap {
+      display: flex; flex-direction: column; justify-content: center;
+      align-items: flex-start; padding: 20px; height: 100%;
+    }
+    .kpi-label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    .kpi-value { font-size: 36px; font-weight: 700; color: #111827; margin-top: 4px; }
+    .kpi-sub   { font-size: 12px; color: #6b7280; margin-top: 6px; }
+    .highcharts-dashboards-cell { background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+    #diag {
+      margin: 16px 24px; padding: 12px 16px; border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+      background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
+      white-space: pre-wrap; display: none;
+    }
+    #diag.error { background: #fee2e2; color: #991b1b; border-color: #fca5a5; display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Sales Performance Dashboard</h1>
+    <p>Highcharts Dashboards CDN demo · click a region bar to cross-filter</p>
+  </header>
+
+  <div class="filter-bar">
+    <span>Filter:</span>
+    <span id="filter-pill" class="pill">All regions</span>
+    <button id="clear-filter">Clear</button>
+  </div>
+
+  <div id="diag"></div>
+  <div id="container"></div>
+
+  <script>
+  // ---------- 0. Self-diagnose CDN load ----------
+  function showDiag(msg) {
+    const el = document.getElementById('diag');
+    el.textContent = msg;
+    el.className = 'error';
+  }
+
+  function resolveDashboards() {
+    if (typeof Dashboards !== 'undefined') return Dashboards;
+    if (typeof Highcharts !== 'undefined' && Highcharts.Dashboards) return Highcharts.Dashboards;
+    return null;
+  }
+
+  // ---------- 1. Generate ~200 rows of realistic sample data ----------
+  const REGIONS  = ['North', 'South', 'East', 'West'];
+  const PRODUCTS = ['Widget A', 'Widget B', 'Gadget X', 'Gadget Y'];
+  const REGION_BIAS = { North: 1.0, South: 1.3, East: 0.85, West: 1.15 };
+
+  function mulberry32(seed) {
+    return function () {
+      let t = (seed += 0x6D2B79F5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(42);
+
+  function generateSalesData(count) {
+    const start = Date.UTC(2024, 0, 1);
+    const end   = Date.UTC(2024, 11, 31);
+    const rows  = [];
+    for (let i = 0; i < count; i++) {
+      const ts      = start + Math.floor(rand() * (end - start));
+      const date    = new Date(ts).toISOString().slice(0, 10);
+      const region  = REGIONS[Math.floor(rand() * REGIONS.length)];
+      const product = PRODUCTS[Math.floor(rand() * PRODUCTS.length)];
+      const base    = 200 + rand() * 4000;
+      const revenue = Math.round((base * REGION_BIAS[region]) / 10) * 10;
+      rows.push({ date, region, product, revenue });
+    }
+    return rows.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  const SALES = generateSalesData(200);
+
+  // ---------- 2. Aggregation helpers ----------
+  function filterByRegion(rows, region) {
+    return region ? rows.filter(r => r.region === region) : rows;
+  }
+  function revenueByRegion(rows) {
+    const m = Object.fromEntries(REGIONS.map(r => [r, 0]));
+    rows.forEach(r => { m[r.region] += r.revenue; });
+    return REGIONS.map(r => ({ name: r, y: m[r] }));
+  }
+  function revenueByMonth(rows) {
+    const m = {};
+    rows.forEach(r => {
+      const key = r.date.slice(0, 7);
+      m[key] = (m[key] || 0) + r.revenue;
+    });
+    return Object.keys(m).sort().map(k => {
+      const [y, mo] = k.split('-').map(Number);
+      return [Date.UTC(y, mo - 1, 1), m[k]];
+    });
+  }
+  function totalRevenue(rows) { return rows.reduce((s, r) => s + r.revenue, 0); }
+  function fmtUSD(n) { return '$' + Math.round(n).toLocaleString(); }
+
+  // ---------- 3. State + filter wiring ----------
+  let selectedRegion = null;
+  let board;
+
+  function getComponent(cellId) {
+    const mc = board.mountedComponents.find(m => m.cell && m.cell.id === cellId);
+    return mc && mc.component;
+  }
+
+  async function applyFilter(region) {
+    selectedRegion = region;
+    const filtered = filterByRegion(SALES, region);
+    const total    = totalRevenue(filtered);
+    const monthly  = revenueByMonth(filtered);
+    const byRegion = revenueByRegion(SALES);
+
+    document.getElementById('filter-pill').textContent =
+      region ? region + ' region' : 'All regions';
+
+    const kpi = getComponent('cell-kpi');
+    if (kpi) {
+      await kpi.update({
+        elements: [
+          { tagName: 'div', attributes: { class: 'kpi-wrap' }, children: [
+            { tagName: 'div', attributes: { class: 'kpi-label' }, textContent: 'Total Revenue' },
+            { tagName: 'div', attributes: { class: 'kpi-value' }, textContent: fmtUSD(total) },
+            { tagName: 'div', attributes: { class: 'kpi-sub'   }, textContent:
+                (region ? region + ' · ' : 'All regions · ') + filtered.length + ' orders' }
+          ]}
+        ]
+      });
+    }
+
+    const line = getComponent('cell-line');
+    if (line) {
+      await line.update({
+        chartOptions: {
+          title: { text: 'Revenue by Month' + (region ? ' — ' + region : '') },
+          series: [{ name: 'Revenue', data: monthly }]
+        }
+      });
+    }
+
+    const col = getComponent('cell-column');
+    if (col) {
+      await col.update({
+        chartOptions: {
+          series: [{
+            name: 'Revenue',
+            data: byRegion.map(p => ({
+              ...p,
+              color: region && p.name !== region ? '#cbd5e1' : '#6366f1',
+              selected: region === p.name
+            }))
+          }]
+        }
+      });
+    }
+
+    try {
+      const conn = await board.dataPool.getConnector('sales-filtered');
+      if (conn) {
+        conn.table.deleteRows();
+        conn.table.setRows(filtered);
+      }
+    } catch (e) { /* connector may not be ready */ }
+  }
+
+  // ---------- 4. Boot ----------
+  window.addEventListener('load', function () {
+    // Give onerror/onload a tick to settle
+    setTimeout(function () {
+      const missing = [];
+      if (typeof Highcharts === 'undefined') missing.push('Highcharts');
+      const D = resolveDashboards();
+      if (!D) missing.push('Dashboards');
+
+      if (missing.length) {
+        const loaded = Object.keys(window.__loaded).join(', ') || '(none)';
+        const failed = window.__failed.join(', ') || '(none reported)';
+        showDiag(
+          'CDN scripts did not load.\n\n' +
+          'Missing globals: ' + missing.join(', ') + '\n' +
+          'Loaded scripts:  ' + loaded + '\n' +
+          'Failed scripts:  ' + failed + '\n\n' +
+          'Likely causes:\n' +
+          '  • Browser extension blocking jsdelivr.net (try Incognito with extensions off)\n' +
+          '  • Corporate proxy / SSL inspection\n' +
+          '  • Offline / DNS issue\n\n' +
+          'Open the Network tab and reload to see request status.'
+        );
+        return;
+      }
+
+      document.getElementById('container').innerHTML = '';
+      bootBoard(D);
+    }, 50);
+  });
+
+  document.getElementById('clear-filter').addEventListener('click', () => {
+    if (board) applyFilter(null);
+  });
+
+  function bootBoard(D) {
+    board = D.board('container', {
+      dataPool: {
+        connectors: [{
+          id: 'sales-filtered',
+          type: 'JSON',
+          options: {
+            firstRowAsNames: false,
+            columnNames: ['date', 'region', 'product', 'revenue'],
+            data: SALES.map(r => [r.date, r.region, r.product, r.revenue])
+          }
+        }]
+      },
+
+      gui: {
+        layouts: [{
+          rows: [
+            { cells: [{ id: 'cell-kpi' },    { id: 'cell-line' }] },
+            { cells: [{ id: 'cell-column' }, { id: 'cell-grid' }] }
+          ]
+        }]
+      },
+
+      components: [
+        {
+          type: 'HTML',
+          renderTo: 'cell-kpi',
+          elements: [
+            { tagName: 'div', attributes: { class: 'kpi-wrap' }, children: [
+              { tagName: 'div', attributes: { class: 'kpi-label' }, textContent: 'Total Revenue' },
+              { tagName: 'div', attributes: { class: 'kpi-value' }, textContent: fmtUSD(totalRevenue(SALES)) },
+              { tagName: 'div', attributes: { class: 'kpi-sub'   }, textContent: 'All regions · ' + SALES.length + ' orders' }
+            ]}
+          ]
+        },
+        {
+          type: 'Highcharts',
+          renderTo: 'cell-line',
+          chartOptions: {
+            chart: { type: 'line', height: 320 },
+            title: { text: 'Revenue by Month' },
+            credits: { enabled: false },
+            legend: { enabled: false },
+            xAxis: { type: 'datetime' },
+            yAxis: { title: { text: 'Revenue (USD)' } },
+            tooltip: { xDateFormat: '%B %Y', pointFormat: '<b>{point.y:,.0f}</b> USD' },
+            plotOptions: { line: { marker: { enabled: true, radius: 3 }, color: '#6366f1' } },
+            series: [{ name: 'Revenue', data: revenueByMonth(SALES) }]
+          }
+        },
+        {
+          type: 'Highcharts',
+          renderTo: 'cell-column',
+          chartOptions: {
+            chart: { type: 'column', height: 320 },
+            title: { text: 'Revenue by Region' },
+            subtitle: { text: 'Click a bar to filter' },
+            credits: { enabled: false },
+            legend: { enabled: false },
+            xAxis: { type: 'category' },
+            yAxis: { title: { text: 'Revenue (USD)' } },
+            tooltip: { pointFormat: '<b>{point.y:,.0f}</b> USD' },
+            plotOptions: {
+              column: {
+                cursor: 'pointer',
+                allowPointSelect: true,
+                point: {
+                  events: {
+                    click: function () {
+                      const next = (selectedRegion === this.name) ? null : this.name;
+                      applyFilter(next);
+                    }
+                  }
+                }
+              }
+            },
+            series: [{
+              name: 'Revenue',
+              data: revenueByRegion(SALES).map(p => ({ ...p, color: '#6366f1' }))
+            }]
+          }
+        },
+        {
+          type: 'DataGrid',
+          renderTo: 'cell-grid',
+          connector: { id: 'sales-filtered' },
+          title: 'Order Detail',
+          dataGridOptions: {
+            editable: false,
+            columns: {
+              date:    { headerFormat: 'Date' },
+              region:  { headerFormat: 'Region' },
+              product: { headerFormat: 'Product' },
+              revenue: {
+                headerFormat: 'Revenue',
+                cellFormatter: function () { return fmtUSD(this.value); }
+              }
+            }
+          }
+        }
+      ]
+    });
+  }
+  </script>
+</body>
+</html>

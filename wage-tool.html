@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wage Comparison Tool · Virginia Works</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2/dist/css/tom-select.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tom-select@2/dist/js/tom-select.complete.min.js"></script>
+  <style>
+    :root {
+      --ink:    #1a1f2c;
+      --muted:  #5a6376;
+      --line:   #cdd3df;
+      --paper:  #fbfaf6;
+      --shell:  #ffffff;
+      --faint:  #eceadf;
+      --hi:     #b03a2e;
+      --accent: #2a4470;
+      /* Bullet-chart palette — outer band darker than before (4.4:1 against white),
+         inner band lighter than accent so the median tick (ink) reads on top with
+         clear separation. Median tick uses --ink + 3px for strong target signal. */
+      --band-outer: #8aa0c4;
+      --band-inner: #3a5a8a;
+      --serif:  "Source Serif Pro", Georgia, serif;
+      --mono:   "JetBrains Mono", ui-monospace, Menlo, monospace;
+      --sans:   -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    }
+    html, body { margin: 0; padding: 0; background: #f0eee9; font-family: var(--sans); color: var(--ink); }
+    .page-wrap { display: flex; justify-content: center; padding: 32px 16px; }
+    .frame { width: 760px; background: var(--shell); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+
+    /* Agency header */
+    .header { background: var(--ink); color: #fff; padding: 10px 16px; display: flex; justify-content: space-between; align-items: baseline; }
+    .header-title { font-family: var(--serif); font-size: 18px; font-weight: 600; letter-spacing: 0.2px; }
+    .header-sub   { font-size: 11px; color: #c8cdd9; margin-top: 2px; letter-spacing: 0.4px; }
+    .header-brand { font-size: 10px; color: #9ea6b8; font-family: var(--mono); letter-spacing: 0.6px; text-transform: uppercase; }
+
+    /* Controls */
+    .controls { padding: 14px 16px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .control-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .control-grid + .control-grid { margin-top: 10px; }
+    /* Lock label height so the ⓘ info icon (12px) on the JOB label doesn't
+       render that label taller than the LOCATION/SALARY labels — uneven label
+       heights push the inputs to different y-positions and break the row's
+       horizontal box alignment. */
+    .field-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 3px; height: 14px; line-height: 14px; }
+    /* Shared box geometry — every field control resolves to exactly --field-h tall.
+       The !important locks on min/max-height defend against Tom Select setting
+       inline heights that disagree with the plain inputs (the wrapper otherwise
+       renders 1–3px taller than .field-input on Chrome/Safari). */
+    :root { --field-h: 30px; }
+    .field-input, .field-select {
+      background: #fff; border: 1px solid var(--line); border-radius: 3px;
+      padding: 0 28px 0 10px; font-size: 12px; line-height: calc(var(--field-h) - 2px);
+      width: 100%; box-sizing: border-box;
+      height: var(--field-h) !important;
+      min-height: var(--field-h) !important;
+      max-height: var(--field-h) !important;
+      font-family: var(--sans); color: var(--ink);
+      appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    }
+    .field-select {
+      /* Same 12×12 icon footprint as the search-glass, so locations and job inputs read at the same visual weight. */
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%235a6376' d='M3 5 L6 8 L9 5 Z'/></svg>");
+      background-repeat: no-repeat; background-position: right 8px center;
+    }
+    .field-input:focus, .field-select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+    /* Freeform job-search input — text in, SOC code out. No dropdown. */
+    .job-field { position: relative; }
+    /* Small ⓘ next to the label — visual cue that there's a help tooltip on hover. */
+    .info-mark {
+      display: inline-block; margin-left: 4px; color: var(--muted);
+      font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0;
+      cursor: help; opacity: 0.7; transition: opacity .12s, color .12s;
+      vertical-align: 1px;
+    }
+    .job-field:hover .info-mark { opacity: 1; color: var(--accent); }
+    /* Custom tooltip — appears on hover over the entire job-field row, styled to match the agency palette. */
+    .job-field[data-tip]::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 4px); left: 0; max-width: 260px;
+      background: var(--ink); color: #fff; padding: 8px 10px; border-radius: 4px;
+      font-size: 11px; line-height: 1.4; font-weight: 400; letter-spacing: 0;
+      text-transform: none; white-space: normal; z-index: 50;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+      opacity: 0; pointer-events: none; transform: translateY(2px);
+      transition: opacity .15s, transform .15s;
+    }
+    .job-field[data-tip]:hover::after {
+      opacity: 1; transform: translateY(0);
+    }
+    /* Hide the tooltip as soon as the user clicks into the input —
+       the prompt has served its purpose and shouldn't hover over what they're typing. */
+    .job-field[data-tip]:focus-within::after {
+      opacity: 0 !important; pointer-events: none;
+    }
+    .hint-inline {
+      font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 10px;
+      color: var(--muted); font-style: italic; margin-left: 4px;
+    }
+    .job-input {
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a6376' stroke-width='2.2'><circle cx='10.5' cy='10.5' r='6.5'/><path d='m20 20-3.5-3.5'/></svg>");
+      background-repeat: no-repeat; background-position: right 8px center; padding-right: 28px;
+    }
+    .job-input.matched   { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231f7a4d' stroke-width='3'><path d='M5 12 l5 5 L20 7'/></svg>"); }
+    .job-input.unmatched { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23b03a2e' stroke-width='2.4'><path d='M6 6 L18 18 M18 6 L6 18'/></svg>"); border-color: var(--hi); }
+    .match-hint {
+      font-size: 10px; color: var(--muted); margin-top: 3px; min-height: 12px;
+      font-family: var(--mono); line-height: 1.2;
+    }
+    .match-hint.ok  { color: #1f7a4d; }
+    .match-hint.bad { color: var(--hi); }
+
+    /* Tom Select overrides — pixel-for-pixel match with .field-input. */
+    /* Strip the outer wrapper's chrome so .ts-control is the only visible box. */
+    .ts-wrapper {
+      padding: 0 !important; margin: 0 !important;
+      border: 0 !important; background: transparent !important;
+      box-shadow: none !important;
+      height: var(--field-h) !important;
+      min-height: var(--field-h) !important;
+      max-height: var(--field-h) !important;
+      width: 100%; box-sizing: border-box;
+      line-height: 1;
+      /* Block layout (Tom Select defaults to inline-block, which picks up
+         baseline alignment offsets from the grid cell and shifts the dropdown
+         a pixel or two below the plain inputs on the same row). */
+      display: block !important;
+      vertical-align: top !important;
+    }
+    .ts-wrapper.single .ts-control {
+      background: #fff; border: 1px solid var(--line); border-radius: 3px;
+      padding: 0 28px 0 10px; font-size: 12px; line-height: calc(var(--field-h) - 2px);
+      height: var(--field-h) !important;
+      min-height: var(--field-h) !important;
+      max-height: var(--field-h) !important;
+      box-sizing: border-box;
+      font-family: var(--sans); color: var(--ink); box-shadow: none;
+      flex-wrap: nowrap; overflow: hidden; display: flex; align-items: center; gap: 4px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%235a6376' d='M3 5 L6 8 L9 5 Z'/></svg>");
+      background-repeat: no-repeat; background-position: right 8px center;
+    }
+    .ts-wrapper.single .ts-control > * { min-width: 0; }
+    .ts-wrapper.single .ts-control .item {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      flex: 0 1 auto; min-width: 0; max-width: 100%;
+      line-height: calc(var(--field-h) - 2px);
+    }
+    .ts-wrapper.single .ts-control input {
+      font-size: 12px; flex: 1 1 60px; min-width: 60px !important;
+      height: calc(var(--field-h) - 2px) !important;
+      padding: 0 !important; margin: 0 !important; line-height: calc(var(--field-h) - 2px);
+      background: transparent;
+    }
+    /* (Previously: hide .item while focused — left over from when job fields used Tom Select.
+        Now jobs are plain inputs, and hiding the area select's value on focus causes a blank
+        box after picking from the dropdown. Removed.) */
+    /* Suppress Tom Select's own ::after triangle — we use a CSS background chevron instead. */
+    .ts-wrapper.single .ts-control:after { display: none !important; content: none !important; }
+    .ts-wrapper.single.input-active .ts-control { background-image: none; }
+    .ts-wrapper.focus .ts-control { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--line); box-shadow: none; }
+    .ts-dropdown { border: 1px solid var(--line); border-radius: 3px; margin-top: 2px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .ts-dropdown .option { padding: 6px 10px; }
+    .ts-dropdown .active { background: var(--accent); color: #fff; }
+    .ts-dropdown .optgroup-header {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px;
+      color: var(--muted); background: var(--paper);
+      padding: 6px 10px; font-weight: 600;
+    }
+    .ts-dropdown .no-results { padding: 8px 10px; color: var(--muted); font-style: italic; }
+
+    .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; align-content: end; font-size: 11px; color: var(--muted); }
+    .legend-chip { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-chip i { display: inline-block; width: 14px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+    .legend-chip i.tall { width: 3px; height: 12px; border-radius: 1px; }
+    .legend-chip i.dot  { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1.5px #fff inset; }
+
+    /* Chart area — W3-style cards: stat callouts on top, full-width band below. */
+    .chart-area { padding: 12px 16px 16px; }
+
+    /* Card per occupation. Accent strip on the left signals YOUR ROLE (red) vs COMPARISON (navy). */
+    .row-card {
+      position: relative;
+      background: var(--shell);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px 14px 12px 17px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .row-card::before {
+      content: '';
+      position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    }
+    .row-card.you::before { background: var(--hi); }
+    .row-card.cmp::before { background: var(--accent); }
+    .row-card:last-of-type { margin-bottom: 0; }
+
+    /* Top row: occupation block, two stat callouts, two sparkline blocks, × gutter.
+       Sparkline columns are 85px so "WAGE TREND" and "EMPLOYMENT" labels don't truncate. */
+    .row-top {
+      display: grid;
+      grid-template-columns: minmax(150px, 1.3fr) 90px 140px 85px 85px 24px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .role-tag {
+      font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase;
+      font-family: var(--mono); font-weight: 600;
+      margin-bottom: 2px; line-height: 1.1;
+    }
+    .row-card.you .role-tag { color: var(--hi); }
+    .row-card.cmp .role-tag { color: var(--muted); }
+
+    .row-occ { min-width: 0; }
+    .row-job { font-size: 14px; font-weight: 700; line-height: 1.2; color: var(--ink); margin-bottom: 1px; }
+    .row-area { font-size: 11px; color: var(--muted); line-height: 1.25; }
+
+    /* Stat callouts (Median, Your percentile) — big serif value with small-caps label. */
+    .stat-block { min-width: 0; }
+    .stat-label {
+      font-size: 10px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600;
+      margin-bottom: 3px; line-height: 1.2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .stat-value {
+      font-family: var(--serif); font-size: 22px; font-weight: 700;
+      line-height: 1.05; color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-sub {
+      font-size: 10px; color: var(--muted); line-height: 1.25; margin-top: 2px;
+    }
+    .stat-sub.pos { color: #1f7a4d; font-family: var(--mono); font-weight: 500; }
+    .stat-sub.neg { color: var(--hi); font-family: var(--mono); font-weight: 500; }
+    /* Two-line label for sparkline blocks ("Wage trend" / "5-yr"). */
+    .stat-spark .stat-label-sub {
+      display: block; font-size: 9px; opacity: 0.8; font-weight: 500;
+      letter-spacing: 0.3px; text-transform: none; margin-top: 1px;
+    }
+
+    .pct-bar { width: 100%; height: 34px; margin-top: 6px; }
+    .sparkline { width: 100%; height: 32px; }
+    .sparkline.empty { display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--muted); font-style: italic; opacity: 0.55; }
+
+    .row-actions { display: flex; align-items: flex-start; justify-content: center; padding-top: 4px; }
+    .row-remove {
+      width: 22px; height: 22px; padding: 0; line-height: 1;
+      background: #fff; border: 1px solid var(--line); border-radius: 50%;
+      color: var(--muted); cursor: pointer; font-size: 14px; font-weight: 500;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .row-remove:hover { background: var(--hi); border-color: var(--hi); color: #fff; }
+
+    /* Shared bottom axis. Transparent 1px border + matching padding aligns its inner
+       width with the card bands above (cards have 1px border + 17/14 padding). */
+    .axis-row { border: 1px solid transparent; padding: 0 14px 0 17px; margin-top: 4px; }
+    .axis-chart { width: 100%; height: 26px; }
+
+    .legend-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--faint);
+      gap: 12px; flex-wrap: wrap;
+    }
+    .action-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 12px; }
+    /* Hide the comparison-controls row when there's only one job */
+    .frame:not(.has-cmp) .cmp-controls { display: none; }
+    /* Hide the Add button when both jobs are already shown */
+    .frame.has-cmp #add-job { display: none; }
+    .btn {
+      font-size: 12px; padding: 7px 14px; border-radius: 4px; font-weight: 500;
+      border: 1px solid var(--accent); color: var(--accent); background: #fff; cursor: pointer; font-family: var(--sans);
+    }
+    .btn:hover { background: var(--accent); color: #fff; }
+    .source-note { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+
+    /* "How to read this" header button */
+    .help-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
+      background: rgba(255,255,255,0.08); color: #d6dbe6;
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;
+      padding: 5px 10px; cursor: pointer; transition: background .12s, color .12s;
+    }
+    .help-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+    .help-btn svg { flex: 0 0 auto; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(20,25,38,0.55);
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+      z-index: 1000; opacity: 0; pointer-events: none; transition: opacity .15s;
+    }
+    .modal-backdrop.show { opacity: 1; pointer-events: auto; }
+    .modal-card {
+      background: #fff; width: 520px; max-width: 100%; max-height: calc(100vh - 48px);
+      border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+      overflow: auto; transform: translateY(8px); transition: transform .18s;
+    }
+    .modal-backdrop.show .modal-card { transform: translateY(0); }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px 4px; gap: 12px;
+    }
+    .modal-head h2 { margin: 0; font-family: var(--serif); font-size: 18px; font-weight: 600; color: var(--ink); }
+    .modal-close {
+      background: transparent; border: none; cursor: pointer; color: var(--muted);
+      width: 28px; height: 28px; font-size: 20px; line-height: 1; border-radius: 4px;
+    }
+    .modal-close:hover { background: var(--paper); color: var(--ink); }
+    .modal-body { padding: 8px 24px 22px; font-size: 13px; line-height: 1.55; color: var(--ink); }
+    .modal-body p { margin: 0 0 10px; color: #3a4153; }
+    .help-illustration {
+      display: block; width: 100%; height: auto; margin: 14px 0 10px;
+      background: var(--paper); border-radius: 6px; border: 1px solid var(--faint); padding: 10px 0;
+    }
+    .help-bullets { list-style: none; padding: 0; margin: 14px 0 8px; display: grid; gap: 10px; }
+    .help-bullets li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; }
+    .help-bullets .swatch {
+      display: inline-block; width: 18px; height: 12px; border-radius: 2px; margin-top: 3px;
+    }
+    .help-bullets .swatch.tick { width: 4px; height: 16px; margin-left: 7px; }
+    .help-bullets .swatch.dot  { width: 12px; height: 12px; border-radius: 50%; margin-left: 3px; margin-top: 4px; box-shadow: 0 0 0 1.5px #fff inset; }
+    .help-bullets b { color: var(--ink); }
+    .help-footnote { font-size: 11px; color: var(--muted); margin-top: 10px !important; font-style: italic; }
+
+    /* Diagnostic banner (used only if scripts fail) */
+    .diag { display: none; margin: 16px 24px; padding: 12px 16px; border-radius: 8px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .diag.show { display: block; }
+
+    /* ----- Box alignment ----------------------------------------------------
+       The comparison-controls row has an empty trailing cell to keep its
+       location field's column width in lockstep with the row above. Tom Select
+       can set inline pixel widths on its wrappers when initialized while the
+       parent is display:none — these rules force the wrapper to 100% of its
+       grid track so both rows' fields end at the same x. */
+    .cmp-controls { grid-template-columns: 1fr 1fr 1fr; }
+    .cmp-controls > div:last-child { min-width: 1px; }
+    .cmp-controls .ts-wrapper,
+    .cmp-controls .ts-wrapper .ts-control { width: 100% !important; max-width: 100% !important; }
+
+    /* ----- Responsive: tablet ----------------------------------------------
+       Frame goes fluid; controls collapse to 2 columns so the salary input
+       has room. Employment sparkline narrows but stays visible. */
+    @media (max-width: 760px) {
+      .page-wrap { padding: 16px 12px; }
+      .frame { width: 100%; }
+    }
+    @media (max-width: 640px) {
+      .page-wrap { padding: 0; }
+      .frame { border-radius: 0; border-left: none; border-right: none; }
+      .controls { padding: 12px; }
+      .control-grid,
+      .cmp-controls { grid-template-columns: 1fr; gap: 10px; }
+      .control-grid + .control-grid { margin-top: 10px; }
+    }
+
+    /* ----- Responsive: mobile ----------------------------------------------
+       Cards reflow vertically: occupation block on top, stat row below, then
+       the full-width band. Employment sparkline hides — only the 5-yr wage
+       trend stays, matching the mobile mockup. */
+    @media (max-width: 560px) {
+      .chart-area { padding: 10px 10px 14px; }
+      .row-card { padding: 12px 12px 12px 15px; }
+      .row-top {
+        grid-template-columns: 1fr 1fr 70px 24px;
+        grid-template-areas:
+          "occ occ occ actions"
+          "median pct wage wage";
+        gap: 10px 12px;
+        align-items: start;
+      }
+      .row-occ        { grid-area: occ; }
+      .stat-median    { grid-area: median; }
+      .stat-pct       { grid-area: pct; }
+      .stat-wage      { grid-area: wage; }
+      .stat-emp       { display: none; }
+      .row-actions    { grid-area: actions; }
+      .stat-value     { font-size: 19px; }
+      .stat-label     { font-size: 9px; letter-spacing: 0.5px; }
+      .row-job        { font-size: 13px; }
+      .axis-row       { padding: 0 12px 0 15px; }
+
+      /* Guide modal — was too cramped on phones at the desktop font sizes. */
+      .modal-backdrop  { padding: 10px; }
+      .modal-card      { max-height: calc(100vh - 20px); }
+      .modal-head      { padding: 14px 16px 2px; }
+      .modal-head h2   { font-size: 20px; }
+      .modal-body      { padding: 8px 16px 18px; font-size: 15px; line-height: 1.55; }
+      .modal-body p    { margin: 0 0 12px; }
+      .help-bullets    { gap: 14px; margin: 16px 0 10px; }
+      .help-bullets li { gap: 12px; }
+      .help-footnote   { font-size: 13px !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-wrap">
+    <div class="frame">
+      <header class="header">
+        <div>
+          <div class="header-title">Wage Comparison Tool</div>
+          <div class="header-sub">Compare wages in your area · Bureau of Labor Statistics OEWS</div>
+        </div>
+        <button id="help-btn" class="help-btn" aria-haspopup="dialog" aria-controls="help-modal" title="How to read this chart">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="9.5"/>
+            <path d="M9.5 9 a2.5 2.5 0 1 1 4 2 c-.7 .5 -1.5 1 -1.5 2"/>
+            <circle cx="12" cy="17" r=".6" fill="currentColor"/>
+          </svg>
+          Guide
+        </button>
+      </header>
+
+      <section class="controls">
+        <div class="control-grid">
+          <div class="job-field" data-tip="Type your job title in your own words — e.g. ‘sales associate’, ‘line cook’, ‘RN’. We'll match it to the closest official occupation.">
+            <div class="field-label">Current job<span class="info-mark" aria-hidden="true">ⓘ</span></div>
+            <input id="cur-job" class="field-input job-input" type="text" placeholder="e.g. sales associate, line cook, RN" autocomplete="off" title="Type your job title in your own words — we'll match it to the closest official occupation." />
+            <div class="match-hint" data-for="cur-job"></div>
+          </div>
+          <div>
+            <div class="field-label">Current location</div>
+            <select id="cur-area" class="field-select"></select>
+          </div>
+          <div>
+            <div class="field-label">Current salary</div>
+            <input id="cur-salary" class="field-input" type="text" value="$48,000" inputmode="numeric" />
+          </div>
+        </div>
+        <div class="control-grid cmp-controls">
+          <div class="job-field" data-tip="Type the job you want to compare against. Use your own words — e.g. ‘data analyst’, ‘project manager’.">
+            <div class="field-label">Comparison job<span class="info-mark" aria-hidden="true">ⓘ</span></div>
+            <input id="cmp-job" class="field-input job-input" type="text" placeholder="e.g. data analyst, project manager" autocomplete="off" title="Type the comparison job in your own words — we'll match it to the closest official occupation." />
+            <div class="match-hint" data-for="cmp-job"></div>
+          </div>
+          <div>
+            <div class="field-label">Comparison location</div>
+            <select id="cmp-area" class="field-select"></select>
+          </div>
+          <div></div>
+        </div>
+      </section>
+
+      <section class="chart-area">
+        <div id="rows-container"></div>
+        <div class="axis-row">
+          <div id="axis-chart" class="axis-chart"></div>
+        </div>
+        <div class="legend-row">
+          <div class="legend">
+            <span class="legend-chip"><i style="background:var(--band-outer)"></i> 10th–90th percentile</span>
+            <span class="legend-chip"><i style="background:var(--band-inner)"></i> 25th–75th percentile</span>
+            <span class="legend-chip"><i class="tall" style="background:var(--ink)"></i> Median</span>
+            <span class="legend-chip"><i class="dot" style="background:var(--hi)"></i> Your salary</span>
+          </div>
+          <button id="add-job" class="btn btn-primary">+ Add comparison job</button>
+        </div>
+        <div class="action-row">
+          <span class="source-note" id="source-note"></span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="help-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="help-title">How to read this chart</h2>
+        <button class="modal-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p>Each row shows a single occupation's wage spread for the area you selected. The bar tells you how wages vary among workers in that job.</p>
+
+        <svg class="help-illustration" viewBox="0 0 480 170" role="img" aria-label="Annotated example of a percentile bar">
+          <!-- Bar -->
+          <g transform="translate(40, 65)">
+            <rect x="0"   y="6" width="400" height="28" rx="3" fill="#8aa0c4"/>
+            <rect x="100" y="9" width="200" height="22" rx="2" fill="#3a5a8a"/>
+            <line x1="180" y1="0" x2="180" y2="40" stroke="#1a1f2c" stroke-width="3" stroke-linecap="square"/>
+            <circle cx="260" cy="20" r="7" fill="#b03a2e" stroke="#fff" stroke-width="2"/>
+          </g>
+          <!-- Callouts -->
+          <!-- 10–90 -->
+          <g fill="#3a4153" font-family="-apple-system, system-ui, sans-serif" font-size="11">
+            <line x1="60"  y1="65" x2="60"  y2="40" stroke="#5a6376" stroke-width="1"/>
+            <text x="62"  y="32" font-weight="600">10th–90th percentile</text>
+            <text x="62"  y="46" fill="#5a6376">the widest band — 80% of workers</text>
+          </g>
+          <!-- 25–75 -->
+          <g fill="#3a4153" font-family="-apple-system, system-ui, sans-serif" font-size="11">
+            <line x1="280" y1="65" x2="280" y2="40" stroke="#5a6376" stroke-width="1"/>
+            <text x="282" y="32" font-weight="600">25th–75th percentile</text>
+            <text x="282" y="46" fill="#5a6376">the middle 50% — most workers</text>
+          </g>
+          <!-- Median -->
+          <g fill="#3a4153" font-family="-apple-system, system-ui, sans-serif" font-size="11">
+            <line x1="220" y1="105" x2="220" y2="130" stroke="#5a6376" stroke-width="1"/>
+            <text x="222" y="146" font-weight="600">Median</text>
+          </g>
+          <!-- Salary -->
+          <g fill="#3a4153" font-family="-apple-system, system-ui, sans-serif" font-size="11">
+            <line x1="300" y1="105" x2="380" y2="130" stroke="#b03a2e" stroke-width="1"/>
+            <text x="378" y="146" font-weight="600" fill="#b03a2e">Your salary</text>
+          </g>
+        </svg>
+
+        <ul class="help-bullets">
+          <li><span class="swatch" style="background:var(--band-outer)"></span><div><b>Outer light blue band</b> — the 10th to 90th percentile of workers in this job. Wages here include early-career, mid-career, and most senior workers.</div></li>
+          <li><span class="swatch" style="background:var(--band-inner)"></span><div><b>Inner dark blue band</b> — the 25th to 75th percentile. Most workers in this occupation earn somewhere in this range.</div></li>
+          <li><span class="swatch tick" style="background:var(--ink)"></span><div><b>Black tick</b> — the median. Half of workers earn less, half earn more.</div></li>
+          <li><span class="swatch dot" style="background:var(--hi)"></span><div><b>Red dot</b> — your current salary, plotted on the same scale. Use it to see where you'd land in the comparison occupation.</div></li>
+        </ul>
+
+        <p class="help-footnote">Sparklines at right show the annual wage trend (last 5 years) and the monthly employment trend. Hover any chart for exact values. Data: BLS Occupational Employment and Wage Statistics.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="diag" class="diag"></div>
+
+  <script>
+  (async function () {
+    // ------- 0. Diagnostic helper -------
+    function fatal(msg) {
+      const el = document.getElementById('diag');
+      el.textContent = msg;
+      el.classList.add('show');
+    }
+    if (typeof echarts === 'undefined') {
+      fatal('ECharts CDN failed to load. Check network/extensions blocking cdn.jsdelivr.net.');
+      return;
+    }
+
+    // ------- 1. Load data (real first, then example fallback) -------
+    async function loadData() {
+      for (const path of ['data/wages.json', 'data/wages.example.json']) {
+        try {
+          const r = await fetch(path, { cache: 'no-store' });
+          if (r.ok) {
+            const j = await r.json();
+            return { data: j, path };
+          }
+        } catch (_) { /* try next */ }
+      }
+      return null;
+    }
+    async function loadEmployment() {
+      try {
+        const r = await fetch('data/employment_trend.json', { cache: 'no-store' });
+        if (r.ok) return await r.json();
+      } catch (_) { /* optional file */ }
+      return null;
+    }
+
+    const [loaded, EMP] = await Promise.all([loadData(), loadEmployment()]);
+    if (!loaded) {
+      fatal(
+        'Could not load wage data.\n\n' +
+        'Looked for:\n' +
+        '  data/wages.json (real Snowflake export)\n' +
+        '  data/wages.example.json (fallback)\n\n' +
+        'If you opened this file via file:// some browsers block fetch().\n' +
+        'Run a tiny local server instead:\n' +
+        '  cd "' + location.pathname.replace(/[^/]*$/, '') + '" && python3 -m http.server 8000\n' +
+        'Then open http://localhost:8000/wage-tool.html'
+      );
+      return;
+    }
+    const DATA = loaded.data;
+    const isReal = loaded.path === 'data/wages.json';
+    // Show only the data freshness signal — hide the underlying database.schema
+    // since end-users don't need to see internal warehouse table names.
+    document.getElementById('source-note').textContent =
+      isReal ? 'Live data · BLS OEWS' : 'Example data';
+
+    // ------- 2. Clean + index data -------
+    // 2a. Drop junk areas: anything with id "none", and dedupe by label (prefer the
+    //     longer/more specific label — e.g. "Virginia Beach-Chesapeake-Norfolk, VA-NC"
+    //     wins over "Virginia Beach-Norfolk-Newport News" since the former matches
+    //     the OMB MSA name).
+    (function cleanAreas() {
+      const byLabel = new Map(); // canonical label -> chosen area
+      DATA.areas.forEach(a => {
+        if (!a || !a.id || a.id === 'none' || /^none$/i.test(a.label || '')) return;
+        const key = (a.label || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 20);
+        const existing = byLabel.get(key);
+        if (!existing || a.label.length > existing.label.length) byLabel.set(key, a);
+      });
+      const keep = new Set([...byLabel.values()].map(a => a.id));
+      DATA.areas = DATA.areas.filter(a => keep.has(a.id));
+      DATA.jobs.forEach(j => {
+        j.areas = Object.fromEntries(
+          Object.entries(j.areas || {}).filter(([aid]) => keep.has(aid))
+        );
+      });
+    })();
+
+    const AREAS  = DATA.areas;
+    const JOBS   = DATA.jobs;
+    const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
+    const JOB_BY_ID  = Object.fromEntries(JOBS.map(j => [j.id, j]));
+    const TREND_YEARS = (DATA.meta && DATA.meta.trend_years) || [2020,2021,2022,2023,2024];
+
+    function getEntry(jobId, areaId) {
+      const job = JOB_BY_ID[jobId];
+      if (!job) return null;
+      return job.areas[areaId] || null;
+    }
+    function defaultAreaFor(jobId) {
+      const j = JOB_BY_ID[jobId];
+      if (!j) return AREAS[0].id;
+      const k = Object.keys(j.areas);
+      return k.includes(AREAS[0].id) ? AREAS[0].id : k[0];
+    }
+
+    // ------- 3. State -------
+    // Pick first two jobs that share at least one area, prefer a "your role" + comparison pair.
+    function pickInitial() {
+      // Default first job: Office Clerks, General. Comparison falls back to Registered Nurses,
+      // then to whatever is first in the list if those aren't present.
+      const prefer = ['43-9061', '29-1141'];
+      const have = prefer.filter(id => JOB_BY_ID[id]);
+      if (have.length === 2) return have;
+      if (have.length === 1) return [have[0], JOBS.find(j => j.id !== have[0]).id];
+      return JOBS.slice(0, 2).map(j => j.id);
+    }
+    const initialJobs = pickInitial();
+    const initialArea = AREAS.find(a => a.areatype === '01')?.id || AREAS[0].id;
+
+    // Tool starts with ONE job (the user's current job). The Add button reveals
+    // the comparison job; the × on the comparison row removes it.
+    const state = {
+      userSalary: 48000,
+      rows: [
+        { jobId: initialJobs[0], areaId: initialArea, isYou: true },
+      ],
+    };
+    // The comparison job's prior selection is held here while it's not shown,
+    // so re-adding it restores what they had before.
+    let cmpDraft = { jobId: initialJobs[1] || initialJobs[0], areaId: initialArea };
+
+    const frameEl = document.querySelector('.frame');
+    function syncCmpFlag() {
+      frameEl.classList.toggle('has-cmp', state.rows.length >= 2);
+    }
+
+    // ------- 4. Tom Select comboboxes (searchable; grouped by SOC major group for jobs) -------
+    // Pre-build job options grouped by major_group so the dropdown organizes hundreds of SOC codes.
+    const jobOptgroups = Array.from(
+      JOBS.reduce((m, j) => {
+        const g = j.major_group || 'Other';
+        if (!m.has(g)) m.set(g, []);
+        m.get(g).push({ value: j.id, text: j.label, group: g });
+        return m;
+      }, new Map())
+    ).map(([g, _items]) => ({ value: g, label: g }));
+
+    const jobOptions  = JOBS.map(j => ({
+      value: j.id,
+      text:  j.label + ' · ' + j.soc_code,
+      // Concatenated alias string — Tom Select searches across it.
+      aliases: (j.aliases || []).join(' | '),
+      group: j.major_group || 'Other',
+    }));
+    const areaOptions = AREAS.map(a => ({ value: a.id, text: a.label }));
+
+    // Normalize a string for matching: lowercase, strip punctuation, collapse spaces.
+    function normStr(s) {
+      return String(s || '').toLowerCase()
+        .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    // Strip trailing 's' so "associates" -> "associate", "developers" -> "developer".
+    // Rough but effective for occupation titles where plural is the only common variant.
+    function depluralize(t) { return t.length > 3 ? t.replace(/s$/, '') : t; }
+
+    // Pre-normalized + depluralized index for fast freeform matching.
+    // We depluralize at index time too so the haystack and query compare on
+    // equal footing — "Sales Associate" alias becomes "sale associate", which
+    // matches a query "sales associates" (depluralized to "sale associate").
+    function deplurStr(s) { return s.split(' ').map(depluralize).join(' '); }
+
+    // Total employment across all areas for a job — used as a "this is a common job"
+    // tiebreaker. Registered Nurses (large) beats Nurse Anesthetists (small) for "nurse".
+    function totalEmployment(j) {
+      let sum = 0;
+      for (const a in (j.areas || {})) sum += (j.areas[a].employment || 0);
+      return sum;
+    }
+
+    const JOB_INDEX = JOBS.map(j => ({
+      job: j,
+      labelDep: deplurStr(normStr(j.label)),
+      aliasesNorm: (j.aliases || []).map(a => ({ raw: a, dep: deplurStr(normStr(a)) })),
+      employment: totalEmployment(j),
+    }));
+    const MAX_EMP = Math.max(1, ...JOB_INDEX.map(ix => ix.employment));
+
+    // Stop words pulled from common conversational queries — strip before scoring.
+    const STOP = new Set(['i','im','a','an','the','to','my','is','at','for','of','as','work','works','working','job']);
+
+    // Levenshtein edit distance with early exit when the distance exceeds `limit`.
+    // Used to make the matcher typo-tolerant ("carpentr" → "carpenter", "machanic" → "mechanic").
+    function editDist(a, b, limit) {
+      if (a === b) return 0;
+      const m = a.length, n = b.length;
+      if (Math.abs(m - n) > limit) return limit + 1;
+      if (m === 0) return n;
+      if (n === 0) return m;
+      let prev = new Array(n + 1);
+      for (let j = 0; j <= n; j++) prev[j] = j;
+      for (let i = 1; i <= m; i++) {
+        const curr = new Array(n + 1);
+        curr[0] = i;
+        let rowMin = i;
+        const ca = a.charCodeAt(i - 1);
+        for (let j = 1; j <= n; j++) {
+          const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+          curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+          if (curr[j] < rowMin) rowMin = curr[j];
+        }
+        if (rowMin > limit) return limit + 1;
+        prev = curr;
+      }
+      return prev[n];
+    }
+
+    // Allowed edits as a function of query token length — be strict for short tokens.
+    function maxEditsFor(t) { return t.length <= 3 ? 0 : t.length <= 5 ? 1 : 2; }
+
+    // Return 1.0 if exact match, ~0.65 if within edit distance, 0 otherwise.
+    function tokenMatchScore(qToken, hayTokens) {
+      if (hayTokens.includes(qToken)) return 1.0;
+      const limit = maxEditsFor(qToken);
+      if (limit === 0) return 0;
+      for (const h of hayTokens) {
+        if (Math.abs(h.length - qToken.length) > limit) continue;
+        if (editDist(qToken, h, limit) <= limit) return 0.65;
+      }
+      return 0;
+    }
+
+    // Score one alias (or the label) against the query. WORD-BOUNDARY ONLY —
+    // raw-substring matches are NOT counted, which prevents "rn" from matching
+    // "patte_rn_makers" and similar false positives. Includes typo-tolerant
+    // per-token matching (Levenshtein ≤ 2) at the lower scoring tier.
+    function scoreString(hayNorm, qPhrase, qTokens) {
+      if (!hayNorm || !qPhrase) return 0;
+      if (hayNorm === qPhrase) return 100;
+      if (hayNorm.startsWith(qPhrase + ' ')
+       || hayNorm.endsWith(' ' + qPhrase)
+       || hayNorm.includes(' ' + qPhrase + ' ')) return 50;
+      const hayTokens = hayNorm.split(' ');
+      // Per-token score (1.0 exact, 0.65 fuzzy). All tokens must hit; sum scaled to 18.
+      let sum = 0;
+      for (const t of qTokens) {
+        const m = tokenMatchScore(t, hayTokens);
+        if (m === 0) return 0;
+        sum += m;
+      }
+      return Math.round(18 * (sum / qTokens.length));
+    }
+
+    function bestMatchJob(query) {
+      const qPhraseRaw = normStr(query);
+      if (!qPhraseRaw) return null;
+      const qTokens = qPhraseRaw.split(' ').filter(t => t && !STOP.has(t)).map(depluralize);
+      if (!qTokens.length) return null;
+      const qPhrase = qTokens.join(' ');
+
+      let best = null, bestScore = 0, bestAliasObj = null;
+      for (const ix of JOB_INDEX) {
+        // Label score against the depluralized label
+        const labelScore = scoreString(ix.labelDep, qPhrase, qTokens) * 2;
+        // Best per-alias score against the depluralized alias
+        let topAlias = null, topAliasScore = 0;
+        for (const a of ix.aliasesNorm) {
+          const s = scoreString(a.dep, qPhrase, qTokens);
+          if (s > topAliasScore) { topAliasScore = s; topAlias = a; }
+        }
+        // Penalties for catch-all / niche SOC buckets so the obvious common job wins ties.
+        const allOtherPenalty   = /\ball other\b/.test(ix.labelDep) ? 40 : 0;
+        const postsecPenalty    = /\bpostsecondary\b/.test(ix.labelDep) ? 25 : 0;
+        const supervisorPenalty = /supervisor|first line/.test(ix.labelDep) ? 8 : 0;
+        // Employment-based "common job" boost — log-scaled so the top ~20% of jobs
+        // get most of the lift. Just enough to break ties between an obvious-common
+        // match and a niche label that happens to end with the same word.
+        const empBonus = ix.employment > 0
+          ? (Math.log10(ix.employment + 1) / Math.log10(MAX_EMP + 1)) * 25
+          : 0;
+
+        // Critical: empBonus only applies when there's a real match. Without this
+        // guard, a high-employment job like Fast Food can outscore the 18-pt
+        // threshold on its bonus alone, surfacing as a false match.
+        const matchOnly = labelScore + topAliasScore;
+        if (matchOnly === 0) continue;
+
+        const total = matchOnly + empBonus
+                      - allOtherPenalty - postsecPenalty - supervisorPenalty;
+        if (total > bestScore) { bestScore = total; best = ix; bestAliasObj = topAlias; }
+      }
+      if (!best || bestScore < 18) return null;
+      const matchedAlias =
+        best.labelDep.includes(qPhrase) ? null :
+        (bestAliasObj && bestAliasObj.raw) || null;
+      return { job: best.job, score: bestScore, matchedAlias };
+    }
+
+    function mkAreaCombo(id, initialValue, onChange) {
+      return new TomSelect('#' + id, {
+        options: areaOptions, items: [initialValue], maxOptions: null,
+        searchField: ['text'], onChange: (v) => onChange(v),
+      });
+    }
+
+    // Wire a freeform job text input: show the current job's label, accept free text,
+    // resolve to a SOC code on Enter / blur. Updates state via onChange.
+    function mkJobInput(id, getJobId, setJobId) {
+      const el   = document.getElementById(id);
+      const hint = document.querySelector('.match-hint[data-for="' + id + '"]');
+      el.value = (JOB_BY_ID[getJobId()] || {}).label || '';
+
+      function setHint(cls, msg) {
+        hint.className = 'match-hint' + (cls ? ' ' + cls : '');
+        hint.textContent = msg || '';
+      }
+      function setStatus(cls) {
+        el.classList.remove('matched', 'unmatched');
+        if (cls) el.classList.add(cls);
+      }
+
+      function resolve() {
+        const raw = el.value.trim();
+        const current = JOB_BY_ID[getJobId()];
+        // Empty → revert to current selection silently.
+        if (!raw) {
+          el.value = current ? current.label : '';
+          setStatus(''); setHint('', ''); return;
+        }
+        // Exactly the current label → no-op.
+        if (current && raw === current.label) {
+          setStatus(''); setHint('', ''); return;
+        }
+        const m = bestMatchJob(raw);
+        if (!m) {
+          setStatus('unmatched');
+          setHint('bad', 'No SOC match — try a more common job title.');
+          return;
+        }
+        // Commit
+        setJobId(m.job.id);
+        el.value = m.job.label;
+        setStatus('matched');
+        if (m.matchedAlias) {
+          setHint('ok', 'Matched “' + raw + '” → ' + m.job.label + ' (' + m.job.soc_code + ') via a.k.a. “' + m.matchedAlias + '”');
+        } else {
+          setHint('ok', 'Matched → ' + m.job.label + ' (' + m.job.soc_code + ')');
+        }
+      }
+
+      el.addEventListener('focus', () => { el.select(); setHint('', ''); setStatus(''); });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === 'Tab') { resolve(); if (e.key === 'Enter') el.blur(); }
+        else if (e.key === 'Escape') { el.value = (JOB_BY_ID[getJobId()] || {}).label || ''; setHint('',''); setStatus(''); el.blur(); }
+      });
+      el.addEventListener('blur', () => { resolve(); });
+
+      return {
+        refresh: () => { el.value = (JOB_BY_ID[getJobId()] || {}).label || ''; setStatus(''); setHint('',''); },
+      };
+    }
+
+    // For the comparison job/area inputs we read/write through cmpDraft when the
+    // comparison row is hidden, and through state.rows[1] when it's shown. This
+    // lets the user pre-fill the comparison fields BEFORE clicking Add, and also
+    // remembers what they had selected if they later remove and re-add the row.
+    function getCmpJob()  { return state.rows[1] ? state.rows[1].jobId  : cmpDraft.jobId;  }
+    function getCmpArea() { return state.rows[1] ? state.rows[1].areaId : cmpDraft.areaId; }
+    function setCmpJob(v) {
+      cmpDraft.jobId = v;
+      if (state.rows[1]) state.rows[1].jobId = v;
+      render();
+    }
+    function setCmpArea(v) {
+      cmpDraft.areaId = v;
+      if (state.rows[1]) state.rows[1].areaId = v;
+      render();
+    }
+
+    const ts = {
+      curJob:  mkJobInput ('cur-job',  () => state.rows[0].jobId,  v => { state.rows[0].jobId  = v; render(); }),
+      curArea: mkAreaCombo('cur-area', state.rows[0].areaId,       v => { state.rows[0].areaId = v; render(); }),
+      cmpJob:  mkJobInput ('cmp-job',  getCmpJob,                  setCmpJob),
+      cmpArea: mkAreaCombo('cmp-area', cmpDraft.areaId,            setCmpArea),
+    };
+
+    // Rebuild the area dropdown to only include areas that have data for the given job.
+    // Returns the resolved area id (may differ from input if the previous selection no
+    // longer has data; caller should write back to state).
+    function refreshAreaForJob(tomSelectInstance, jobId, currentAreaId) {
+      const job = JOB_BY_ID[jobId];
+      const validIds = new Set(job ? Object.keys(job.areas || {}) : AREAS.map(a => a.id));
+      const valid = AREAS.filter(a => validIds.has(a.id));
+      if (!valid.length) return currentAreaId; // defensive — shouldn't happen
+      const fallback = valid.find(a => a.id === 'virginia') || valid[0];
+      const resolved = validIds.has(currentAreaId) ? currentAreaId : fallback.id;
+      // Rebuild options
+      tomSelectInstance.clear(true);
+      tomSelectInstance.clearOptions();
+      for (const a of valid) tomSelectInstance.addOption({ value: a.id, text: a.label });
+      tomSelectInstance.refreshOptions(false);
+      tomSelectInstance.addItem(resolved, true);
+      return resolved;
+    }
+
+    // Track previous job ids so we only rebuild area options when the job actually
+    // changes. Rebuilding on every render (e.g. when the user just picked a new area)
+    // momentarily clears the .item display and shows a blank box.
+    const lastJobIds = [null, null];
+
+    function syncTopControls() {
+      ts.curJob.refresh();
+      if (state.rows[0].jobId !== lastJobIds[0]) {
+        const r = refreshAreaForJob(ts.curArea, state.rows[0].jobId, state.rows[0].areaId);
+        if (r !== state.rows[0].areaId) state.rows[0].areaId = r;
+        lastJobIds[0] = state.rows[0].jobId;
+      } else {
+        ts.curArea.setValue(state.rows[0].areaId, true);
+      }
+
+      // Always keep the comparison job/area inputs in sync with cmpDraft/state[1]
+      // so the user can prefill before clicking Add.
+      ts.cmpJob.refresh();
+      const cmpJobId  = getCmpJob();
+      const cmpAreaId = getCmpArea();
+      if (cmpJobId !== lastJobIds[1]) {
+        const r = refreshAreaForJob(ts.cmpArea, cmpJobId, cmpAreaId);
+        if (r !== cmpAreaId) {
+          cmpDraft.areaId = r;
+          if (state.rows[1]) state.rows[1].areaId = r;
+        }
+        lastJobIds[1] = cmpJobId;
+      } else {
+        ts.cmpArea.setValue(cmpAreaId, true);
+      }
+
+      document.getElementById('cur-salary').value = '$' + state.userSalary.toLocaleString();
+      syncCmpFlag();
+    }
+
+    document.getElementById('cur-salary').addEventListener('change', e => {
+      const n = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(n) && n > 0) { state.userSalary = n; render(); }
+      else e.target.value = '$' + state.userSalary.toLocaleString();
+    });
+
+    document.getElementById('add-job').addEventListener('click', () => {
+      if (state.rows.length >= 2) return;
+      // Seed the comparison row with the current job's job + area. The user
+      // will change it anyway, but starting from a valid combination guarantees
+      // the comparison row renders real data immediately instead of a hidden
+      // "no data" placeholder.
+      cmpDraft.jobId  = state.rows[0].jobId;
+      cmpDraft.areaId = state.rows[0].areaId;
+      state.rows.push({ jobId: cmpDraft.jobId, areaId: cmpDraft.areaId, isYou: false });
+      render();
+    });
+
+    // Help modal wiring — open on header button click, close on backdrop click,
+    // × button, or Escape.
+    (function () {
+      const modal = document.getElementById('help-modal');
+      const open  = () => { modal.classList.add('show'); modal.setAttribute('aria-hidden','false'); };
+      const close = () => { modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); };
+      document.getElementById('help-btn').addEventListener('click', open);
+      modal.querySelector('.modal-close').addEventListener('click', close);
+      modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('show')) close(); });
+    })();
+
+    // ------- 5. Domain computation -------
+    function snap(n, step, dir) {
+      return dir === 'down' ? Math.floor(n / step) * step : Math.ceil(n / step) * step;
+    }
+    function computeDomain() {
+      const entries = state.rows.map(r => getEntry(r.jobId, r.areaId)).filter(Boolean);
+      if (!entries.length) return { min: 30000, max: 100000, ticks: [30000, 50000, 70000, 90000] };
+      const lo = Math.min(...entries.map(e => e.p10), state.userSalary);
+      const hi = Math.max(...entries.map(e => e.p90), state.userSalary);
+      const step = (hi - lo) > 80000 ? 20000 : 10000;
+      const min = Math.max(0, snap(lo - step * 0.4, step, 'down'));
+      const max = snap(hi + step * 0.3, step, 'up');
+      const tickStep = (max - min) / 5;
+      const ticks = [];
+      for (let i = 0; i <= 5; i++) ticks.push(min + i * tickStep);
+      return { min, max, ticks };
+    }
+
+    function approxPercentile(p, salary) {
+      const pts = [[10,p.p10],[25,p.p25],[50,p.p50],[75,p.p75],[90,p.p90]];
+      if (salary <= pts[0][1]) return '<10';
+      if (salary >= pts[4][1]) return '>90';
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [pa, va] = pts[i], [pb, vb] = pts[i+1];
+        if (salary >= va && salary <= vb) {
+          const t = (salary - va) / (vb - va);
+          return Math.round(pa + t * (pb - pa));
+        }
+      }
+      return '—';
+    }
+
+    // ------- 6. ECharts: custom percentile bar -------
+    const charts = []; // track for disposal
+
+    // Cache token colors once — reading them per renderItem call is expensive when ECharts repaints.
+    const COL = (function () {
+      const css = getComputedStyle(document.documentElement);
+      const g = (n) => css.getPropertyValue(n).trim();
+      return {
+        ink: g('--ink'), muted: g('--muted'), line: g('--line'),
+        accent: g('--accent'), hi: g('--hi'),
+        bandOuter: g('--band-outer'), bandInner: g('--band-inner'),
+      };
+    })();
+
+    function renderPercentileItem(params, api) {
+      const xPx = (v) => api.coord([v, 0])[0];
+      const yPx = api.coord([api.value(0), 0])[1];
+      const barH = 20;
+
+      const p10 = api.value(1), p25 = api.value(2), p50 = api.value(3),
+            p75 = api.value(4), p90 = api.value(5);
+      const sal = api.value(6);
+
+      // Plot-region bounds for the full-width baseline rail (drawn behind the band
+      // so the band sits cleanly on top of it).
+      const csys = params.coordSys;
+
+      const showSal = sal != null && !isNaN(sal);
+      const children = [
+        // Light horizontal rail spanning the full domain — gives the band a baseline
+        // and extends past it so values that fall outside the percentile range still
+        // read as positioned on the same scale.
+        { type: 'line',
+          shape: { x1: csys.x, y1: yPx, x2: csys.x + csys.width, y2: yPx },
+          style: { stroke: COL.line, lineWidth: 1 } },
+        // 10–90 outer band — clear contrast vs white card
+        { type: 'rect',
+          shape: { x: xPx(p10), y: yPx - barH/2, width: xPx(p90) - xPx(p10), height: barH, r: 2 },
+          style: { fill: COL.bandOuter } },
+        // 25–75 inner band — distinct mid-navy so the median tick reads on top
+        { type: 'rect',
+          shape: { x: xPx(p25), y: yPx - barH/2 + 1.5, width: xPx(p75) - xPx(p25), height: barH - 3, r: 1.5 },
+          style: { fill: COL.bandInner } },
+        // Median tick — 3px wide, extends 4px past the bar on each side for emphasis
+        { type: 'line',
+          shape: { x1: xPx(p50), y1: yPx - barH/2 - 4, x2: xPx(p50), y2: yPx + barH/2 + 4 },
+          style: { stroke: COL.ink, lineWidth: 3, lineCap: 'square' } },
+      ];
+      if (showSal) {
+        const sx = xPx(sal);
+        children.push(
+          { type: 'circle',
+            shape: { cx: sx, cy: yPx, r: 5.5 },
+            style: { fill: COL.hi, stroke: '#fff', lineWidth: 2 } }
+        );
+      }
+      return { type: 'group', children };
+    }
+
+    // Shared inset for the percentile-bar plot region so the bottom axis can render
+    // its leftmost/rightmost tick labels without clipping ("$140K" needs ~18px).
+    const PLOT_INSET_L = 4;
+    const PLOT_INSET_R = 18;
+
+    function mkPercentileBar(el, entry, domain, salary) {
+      const c = echarts.init(el);
+      charts.push(c);
+      c.setOption({
+        animation: false,
+        grid: { top: 6, bottom: 6, left: PLOT_INSET_L, right: PLOT_INSET_R },
+        xAxis: { type: 'value', min: domain.min, max: domain.max, show: false, splitLine: { show: false } },
+        yAxis: { type: 'category', data: [''], show: false },
+        tooltip: {
+          trigger: 'item',
+          formatter: () => {
+            const fmt = (n) => '$' + Math.round(n).toLocaleString();
+            const pct = salary != null ? approxPercentile(entry, salary) : null;
+            return [
+              '<b>Median</b> · ' + fmt(entry.p50),
+              '<b>P25–75</b> · ' + fmt(entry.p25) + '–' + fmt(entry.p75),
+              '<b>P10–90</b> · ' + fmt(entry.p10) + '–' + fmt(entry.p90),
+              pct != null ? '<b>Your salary</b> · ' + fmt(salary) + ' (~' + pct + 'th pct)' : ''
+            ].filter(Boolean).join('<br/>');
+          },
+        },
+        series: [{
+          type: 'custom',
+          renderItem: renderPercentileItem,
+          encode: { x: [1,2,3,4,5,6], y: 0, tooltip: [1,2,3,4,5,6] },
+          data: [[0, entry.p10, entry.p25, entry.p50, entry.p75, entry.p90, salary != null ? salary : NaN]],
+        }],
+      });
+      return c;
+    }
+
+    function mkSparkline(el, trend, opts) {
+      opts = opts || {};
+      const valid = trend.filter(v => v != null);
+      if (valid.length < 1) {
+        el.classList.add('empty');
+        el.textContent = opts.emptyText || 'no data';
+        return null;
+      }
+      const labels = opts.labels || TREND_YEARS.map(String);
+      const fmt = opts.fmt || ((n) => '$' + Math.round(n).toLocaleString());
+      const color = (opts.color || getComputedStyle(document.documentElement).getPropertyValue('--accent')).trim();
+
+      // Tight Y-axis scaling: pad by 10% of the actual data RANGE (not of absolute value).
+      // Result: the line fills ~80% of vertical space regardless of how big the numbers
+      // are, so a $72K→$89K rise looks just as expressive as a $25K→$33K rise.
+      const minV = Math.min(...valid);
+      const maxV = Math.max(...valid);
+      const range = maxV - minV;
+      const pad = range > 0 ? range * 0.10 : Math.max(1, maxV * 0.02);
+
+      const c = echarts.init(el);
+      charts.push(c);
+      c.setOption({
+        animation: false,
+        grid: { top: 3, bottom: 3, left: 2, right: 6 },
+        xAxis: { type: 'category', show: false, data: labels },
+        yAxis: { type: 'value', show: false, min: minV - pad, max: maxV + pad },
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params) => {
+            const p = params[0];
+            return p.name + ' · ' + fmt(p.value);
+          },
+        },
+        series: [{
+          type: 'line', smooth: true, symbol: 'none',
+          lineStyle: { width: 1.5, color, type: opts.dashed ? 'dashed' : 'solid' },
+          data: trend,
+          markPoint: {
+            symbol: 'circle', symbolSize: 6,
+            label: { show: false },
+            itemStyle: { color },
+            data: (() => {
+              let lastIdx = -1;
+              for (let i = trend.length - 1; i >= 0; i--) if (trend[i] != null) { lastIdx = i; break; }
+              return lastIdx < 0 ? [] : [{ coord: [lastIdx, trend[lastIdx]] }];
+            })(),
+          },
+        }],
+      });
+      return c;
+    }
+
+    // Employment data lookup. Returns { trend, scope } where scope is:
+    //   'local'  → exact (job, area) match
+    //   'state'  → Virginia statewide fallback when the MSA has no data
+    //   null     → nothing for this job at all
+    const EMP_MONTHS = (EMP && EMP.meta && EMP.meta.months) || [];
+    const STATE_AREA_ID = 'virginia';
+    function getEmploymentTrend(jobId, areaId) {
+      if (!EMP || !EMP.trends) return { trend: null, scope: null };
+      const local = EMP.trends[jobId + '__' + areaId];
+      if (local) return { trend: local, scope: 'local' };
+      if (areaId !== STATE_AREA_ID) {
+        const statewide = EMP.trends[jobId + '__' + STATE_AREA_ID];
+        if (statewide) return { trend: statewide, scope: 'state' };
+      }
+      return { trend: null, scope: null };
+    }
+
+    function mkAxis(el, domain) {
+      const c = echarts.init(el);
+      charts.push(c);
+      c.setOption({
+        animation: false,
+        // Same inset as percentile bars so ticks align with the bars above AND
+        // the leftmost/rightmost labels have room to render without being clipped.
+        grid: { top: 0, bottom: 18, left: PLOT_INSET_L, right: PLOT_INSET_R },
+        xAxis: {
+          type: 'value', min: domain.min, max: domain.max,
+          axisLine: { lineStyle: { color: COL.line } },
+          axisTick: { lineStyle: { color: COL.muted }, length: 4 },
+          axisLabel: {
+            color: COL.ink,
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            fontSize: 11,
+            fontWeight: 500,
+            formatter: (v) => '$' + Math.round(v / 1000) + 'K',
+            hideOverlap: true,
+            margin: 6,
+          },
+          splitLine: { show: false },
+          interval: (domain.max - domain.min) / 5,
+        },
+        yAxis: { type: 'category', show: false, data: [''] },
+        series: [],
+      });
+      return c;
+    }
+
+    // ------- 7. Row rendering -------
+    // Format approxPercentile output as a display label: "58th", "<10th", ">90th".
+    function fmtPctLabel(entry, salary) {
+      const v = approxPercentile(entry, salary);
+      if (v === '<10') return '<10th';
+      if (v === '>90') return '>90th';
+      if (v === '—' || v == null) return '—';
+      return v + 'th';
+    }
+
+    function renderRow(row, domain) {
+      const entry = getEntry(row.jobId, row.areaId);
+      const job   = JOB_BY_ID[row.jobId];
+      const area  = AREA_BY_ID[row.areaId];
+      const wrap  = document.createElement('div');
+      wrap.className = 'row-card ' + (row.isYou ? 'you' : 'cmp');
+
+      const tag = row.isYou ? 'Your role' : 'Comparison';
+      const occHtml =
+        '<div class="row-occ">' +
+          '<div class="role-tag">' + tag + '</div>' +
+          '<div class="row-job">' + (job ? job.label : '—') + '</div>' +
+          '<div class="row-area">' + (area ? area.label : '—') + '</div>' +
+        '</div>';
+
+      // No-data card: same tag/job/area block + message; × button still placed on the comparison row.
+      if (!entry) {
+        wrap.innerHTML =
+          '<div class="row-top" style="grid-template-columns: minmax(160px, 1.5fr) 1fr 24px;">' +
+            occHtml +
+            '<div style="font-size:11px; color: var(--muted); padding-top: 8px;">No data for this occupation × area.</div>' +
+            '<div class="row-actions" data-role="actions"></div>' +
+          '</div>';
+        if (!row.isYou) {
+          const slot = wrap.querySelector('[data-role=actions]');
+          const x = document.createElement('button');
+          x.className = 'row-remove'; x.textContent = '×';
+          x.title = 'Remove comparison job';
+          x.setAttribute('aria-label', 'Remove comparison job');
+          x.onclick = () => {
+            const idx = state.rows.indexOf(row);
+            if (idx > 0) { state.rows.splice(idx, 1); render(); }
+          };
+          slot.appendChild(x);
+        }
+        return wrap;
+      }
+
+      // Stat values
+      const medianStr = '$' + Math.round(entry.p50 / 1000) + 'K';
+      const pctStr   = fmtPctLabel(entry, state.userSalary);
+
+      // Comparison row: Median sub = delta vs YOUR ROLE's median, color-coded green/red.
+      let medianSub = 'annual';
+      let medianSubCls = '';
+      if (!row.isYou) {
+        const youEntry = getEntry(state.rows[0].jobId, state.rows[0].areaId);
+        if (youEntry) {
+          const delta = entry.p50 - youEntry.p50;
+          const k = Math.round(Math.abs(delta) / 1000);
+          if (delta > 0)      { medianSub = '+$' + k + 'K vs you'; medianSubCls = 'pos'; }
+          else if (delta < 0) { medianSub = '-$' + k + 'K vs you'; medianSubCls = 'neg'; }
+          else                { medianSub = 'same as you'; }
+        }
+      }
+
+      // Percentile-block label/sub: changes wording for comparison row to make the
+      // "if you stayed at $X" framing explicit, like the W3 reference.
+      const pctLabel = row.isYou
+        ? 'Your percentile'
+        : 'If you stayed at $' + Math.round(state.userSalary / 1000) + 'K';
+      const pctSub = row.isYou ? 'within your role' : 'within this role';
+
+      wrap.innerHTML =
+        '<div class="row-top">' +
+          occHtml +
+          '<div class="stat-block stat-median">' +
+            '<div class="stat-label">Median</div>' +
+            '<div class="stat-value">' + medianStr + '</div>' +
+            '<div class="stat-sub ' + medianSubCls + '">' + medianSub + '</div>' +
+          '</div>' +
+          '<div class="stat-block stat-pct">' +
+            '<div class="stat-label">' + pctLabel + '</div>' +
+            '<div class="stat-value">' + pctStr + '</div>' +
+            '<div class="stat-sub">' + pctSub + '</div>' +
+          '</div>' +
+          '<div class="stat-block stat-spark stat-wage">' +
+            '<div class="stat-label">Wage trend<span class="stat-label-sub">5-yr</span></div>' +
+            '<div class="sparkline" data-role="wage-spark"></div>' +
+          '</div>' +
+          '<div class="stat-block stat-spark stat-emp">' +
+            '<div class="stat-label">Employment<span class="stat-label-sub">24 mo.</span></div>' +
+            '<div class="sparkline" data-role="emp-spark"></div>' +
+          '</div>' +
+          '<div class="row-actions" data-role="actions"></div>' +
+        '</div>' +
+        '<div class="pct-bar" data-role="pct-bar"></div>';
+
+      if (!row.isYou) {
+        const slot = wrap.querySelector('[data-role=actions]');
+        const x = document.createElement('button');
+        x.className = 'row-remove'; x.textContent = '×';
+        x.title = 'Remove comparison job';
+        x.setAttribute('aria-label', 'Remove comparison job');
+        x.onclick = () => {
+          const idx = state.rows.indexOf(row);
+          if (idx > 0) { state.rows.splice(idx, 1); render(); }
+        };
+        slot.appendChild(x);
+      }
+
+      // Defer chart mounting until after row is in the DOM so ECharts can measure containers.
+      wrap._mount = () => {
+        mkPercentileBar(wrap.querySelector('[data-role=pct-bar]'),
+                        entry, domain, state.userSalary);
+        mkSparkline(wrap.querySelector('[data-role=wage-spark]'), entry.trend, {
+          labels: TREND_YEARS.map(String),
+          fmt: (n) => '$' + Math.round(n).toLocaleString(),
+          emptyText: 'no trend',
+        });
+        // Employment trend: chosen area first, fall back to VA statewide (dashed line + prefixed tooltip).
+        const emp = getEmploymentTrend(row.jobId, row.areaId);
+        const prefix = emp.scope === 'state' ? 'VA statewide · ' : '';
+        mkSparkline(wrap.querySelector('[data-role=emp-spark]'),
+                    emp.trend || new Array(EMP_MONTHS.length || 0).fill(null), {
+          labels: EMP_MONTHS,
+          fmt: (n) => prefix + Math.round(n).toLocaleString() + ' jobs',
+          color: '#1f7a4d',
+          dashed: emp.scope === 'state',
+          emptyText: EMP ? 'no data' : 'pending',
+        });
+      };
+      return wrap;
+    }
+
+    // ------- 8. Top-level render -------
+    function render() {
+      // Dispose old charts
+      charts.splice(0).forEach(c => { try { c.dispose(); } catch(_) {} });
+
+      syncTopControls();
+      const domain = computeDomain();
+      const container = document.getElementById('rows-container');
+      container.innerHTML = '';
+      const built = state.rows.map(r => renderRow(r, domain));
+      built.forEach(el => container.appendChild(el));
+      // mount charts after layout
+      requestAnimationFrame(() => {
+        built.forEach(el => el._mount && el._mount());
+        const axisEl = document.getElementById('axis-chart');
+        axisEl.innerHTML = '';
+        mkAxis(axisEl, domain);
+      });
+    }
+
+    // Handle resize for ECharts instances
+    window.addEventListener('resize', () => charts.forEach(c => { try { c.resize(); } catch(_) {} }));
+
+    render();
+  })();
+  </script>
+</body>
+</html>

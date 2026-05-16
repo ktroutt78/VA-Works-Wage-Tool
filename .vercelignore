@@ -1,0 +1,6 @@
+.cortex-*.log
+.cortex-prompt.txt
+.cortex/
+docs/
+dashboard.html
+data/raw/
