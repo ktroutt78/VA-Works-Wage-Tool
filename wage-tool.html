@@ -1119,6 +1119,7 @@
         xAxis: { type: 'value', min: domain.min, max: domain.max, show: false, splitLine: { show: false } },
         yAxis: { type: 'category', data: [''], show: false },
         tooltip: {
+          appendToBody: true,
           trigger: 'item',
           formatter: () => {
             const fmt = (n) => '$' + Math.round(n).toLocaleString();
@@ -1169,6 +1170,7 @@
         xAxis: { type: 'category', show: false, data: labels },
         yAxis: { type: 'value', show: false, min: minV - pad, max: maxV + pad },
         tooltip: {
+          appendToBody: true,
           trigger: 'axis',
           formatter: (params) => {
             const p = params[0];
