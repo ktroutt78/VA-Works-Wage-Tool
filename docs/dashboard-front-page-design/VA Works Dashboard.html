@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VA Works — Workforce Insights</title>
+<meta name="viewport" content="width=1400">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Highcharts -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.8/highcharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.8/modules/map.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@highcharts/map-collection@2.1.0/countries/us/us-va-all.js"></script>
+
+<!-- React for Tweaks panel only -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<style>
+:root {
+  --bg-page: #f5f4ef;
+  --bg-card: #ffffff;
+  --border: #e9e7e0;
+  --border-strong: #d8d5cc;
+  --ink-1: #1a1d1f;
+  --ink-2: #4a4d51;
+  --ink-3: #8a8c8f;
+  --ink-4: #b8b9bc;
+
+  --brand-1: #0f2c4a;
+  --brand-2: #1f5fa8;
+  --brand-3: #cfe0f3;
+  --brand-tint: #eaf1f9;
+  --accent:  #c89b3c;
+  --accent-soft: #f4e8c6;
+  --coral:   #b75049;
+  --success: #2f7a4a;
+
+  --shadow-card: 0 0.5px 0 rgba(20,30,50,0.04), 0 1px 2px rgba(20,30,50,0.04), 0 8px 24px rgba(20,30,50,0.04);
+  --radius-card: 14px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: 'Public Sans', system-ui, -apple-system, sans-serif;
+  background: var(--bg-page);
+  color: var(--ink-1);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.page {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 32px 28px 80px;
+}
+
+/* Top header */
+.dash-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 24px;
+}
+.brand-block .eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-2);
+  margin-bottom: 4px;
+}
+.brand-block h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ink-1);
+}
+.brand-block .sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  max-width: 640px;
+}
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.period-select {
+  display: inline-flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  box-shadow: var(--shadow-card);
+}
+.period-select button {
+  border: 0;
+  background: transparent;
+  font: 500 12px/1 'Public Sans', sans-serif;
+  color: var(--ink-2);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.period-select button.active {
+  background: var(--brand-1);
+  color: #fff;
+}
+.meta-pill {
+  font-size: 12px;
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.meta-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(47,122,74,0.18);
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  min-height: 28px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.filter-bar .label { color: var(--ink-3); }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px 4px 10px;
+  background: var(--brand-tint);
+  color: var(--brand-1);
+  border: 1px solid var(--brand-3);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.chip .x {
+  appearance: none;
+  background: rgba(15,44,74,0.1);
+  border: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--brand-1);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chip .x:hover { background: rgba(15,44,74,0.2); }
+.filter-bar.empty .chip { display: none; }
+.filter-bar.empty .label.with-filter { display: none; }
+.filter-bar:not(.empty) .label.no-filter { display: none; }
+
+/* Grid */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1.1fr 0.85fr;
+  gap: 18px;
+}
+.dash-grid.compact { gap: 14px; }
+.dash-grid.compact .card { padding: 14px 16px; height: 420px; }
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  height: 480px;
+  position: relative;
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+.card-title {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink-1);
+}
+.card-sub {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* KPI pair */
+.kpi-row {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  align-items: stretch;
+  gap: 14px;
+  margin: 10px 0 4px;
+  padding: 4px 2px 12px;
+  border-bottom: 1px dashed var(--border);
+}
+.kpi { display: flex; flex-direction: column; gap: 2px; }
+.kpi-divider { background: var(--border); }
+.kpi-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.kpi-value {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-1);
+  line-height: 1.05;
+  margin: 2px 0;
+}
+.kpi-value .unit { font-size: 18px; font-weight: 600; color: var(--ink-2); }
+.kpi-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+.kpi-delta.down { color: var(--coral); }
+.kpi-delta .arrow { font-size: 9px; line-height: 1; }
+.kpi-sub {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.chart-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.map-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.map-legend .swatch-row {
+  display: inline-flex;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.04);
+}
+.map-legend .swatch-row span { width: 22px; height: 8px; }
+
+.legend {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.legend-item.dashed .legend-dot {
+  border-radius: 0;
+  width: 14px;
+  height: 0;
+  border-top: 2px dashed currentColor;
+  background: transparent;
+}
+
+.bar-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.bar-foot strong {
+  color: var(--ink-1);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+.dh-tip { font: 500 12px/1.4 'Public Sans', sans-serif; padding: 0; min-width: 160px; }
+.dh-tip .t-name { font-weight: 700; font-size: 12.5px; color: var(--ink-1); margin-bottom: 4px; }
+.dh-tip .t-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; font-variant-numeric: tabular-nums; padding: 1px 0; }
+.dh-tip .t-row .lbl { color: var(--ink-2); }
+.dh-tip .t-row .val { color: var(--ink-1); font-weight: 600; }
+.dh-tip .t-foot { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--border); color: var(--ink-3); font-size: 11px; }
+
+/* Dark mode */
+body.dark {
+  --bg-page: #0e1418;
+  --bg-card: #161c21;
+  --border: #232a31;
+  --border-strong: #2d353d;
+  --ink-1: #ecedee;
+  --ink-2: #b8bbbe;
+  --ink-3: #767a7e;
+  --ink-4: #4a4e53;
+  --brand-tint: #1b2937;
+  --brand-3: #2a4566;
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.25);
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="dash-head">
+    <div class="brand-block">
+      <div class="eyebrow">Virginia Works · Workforce Insights</div>
+      <h1>Labor Market Snapshot</h1>
+      <p class="sub">Real-time employment indicators across the Commonwealth, drawn from BLS LAUS and JOLTS feeds.</p>
+    </div>
+    <div class="head-right">
+      <div class="period-select" id="period-select" role="tablist" aria-label="Period">
+        <button data-p="3m">3M</button>
+        <button data-p="6m">6M</button>
+        <button data-p="1y" class="active">1Y</button>
+        <button data-p="3y">3Y</button>
+      </div>
+      <span class="meta-pill">Updated Dec 14, 2025</span>
+    </div>
+  </header>
+
+  <div class="filter-bar empty" id="filter-bar">
+    <span class="label no-filter">Showing statewide totals · click any county on the map to cross-filter</span>
+    <span class="label with-filter">Filtering by</span>
+    <span class="chip" id="filter-chip">
+      <span id="filter-name">—</span>
+      <button class="x" id="filter-clear" aria-label="Clear filter">×</button>
+    </span>
+  </div>
+
+  <main class="dash-grid" id="dash-grid">
+
+    <!-- Card 1: Map + KPIs -->
+    <section class="card" data-screen-label="01 Map">
+      <div class="card-head">
+        <h2 class="card-title" data-comment-anchor="map-title">Employment Rate by Locality</h2>
+        <span class="card-sub">Q4 2025</span>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi">
+          <span class="kpi-label">Virginia</span>
+          <span class="kpi-value" id="kpi-va-value">96.8<span class="unit">%</span></span>
+          <span class="kpi-delta"><span class="arrow">▲</span>+0.4 pts</span>
+          <span class="kpi-sub">vs. last period</span>
+        </div>
+        <div class="kpi-divider"></div>
+        <div class="kpi">
+          <span class="kpi-label">U.S. Average</span>
+          <span class="kpi-value" id="kpi-us-value">95.9<span class="unit">%</span></span>
+          <span class="kpi-delta"><span class="arrow">▲</span>+0.2 pts</span>
+          <span class="kpi-sub">vs. last period</span>
+        </div>
+      </div>
+
+      <div class="chart-wrap" id="map-chart"></div>
+
+      <div class="map-legend">
+        <span>Lower</span>
+        <span class="swatch-row" id="map-legend-swatches"></span>
+        <span>Higher employment</span>
+      </div>
+    </section>
+
+    <!-- Card 2: Line -->
+    <section class="card" data-screen-label="02 Trend">
+      <div class="card-head">
+        <h2 class="card-title" data-comment-anchor="line-title">Unemployment Rate Trending</h2>
+        <span class="card-sub">Monthly, seasonally adjusted</span>
+      </div>
+
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" id="leg-va-dot" style="background:#0f2c4a"></span><span>Virginia</span></span>
+        <span class="legend-item" id="legend-region"><span class="legend-dot" id="leg-reg-dot" style="background:#c89b3c"></span><span id="legend-region-name">Northern Virginia</span></span>
+        <span class="legend-item dashed" style="color:#8a8c8f"><span class="legend-dot"></span><span style="color:var(--ink-2)">U.S. National</span></span>
+      </div>
+
+      <div class="chart-wrap" id="line-chart"></div>
+    </section>
+
+    <!-- Card 3: Bar -->
+    <section class="card" data-screen-label="03 Industry">
+      <div class="card-head">
+        <h2 class="card-title" data-comment-anchor="bar-title">Jobs Added by Industry</h2>
+        <span class="card-sub">Net new, last 30 days</span>
+      </div>
+
+      <div class="chart-wrap" id="bar-chart"></div>
+
+      <div class="bar-foot">
+        <span>Top 5 sectors</span>
+        <span>Total: <strong id="bar-total">+55,200</strong> new jobs</span>
+      </div>
+    </section>
+
+  </main>
+
+</div>
+
+<div id="tweaks-root"></div>
+
+<script>
+/* THEMES */
+const THEMES = {
+  navy: {
+    primary: '#0f2c4a', mid: '#1f5fa8', soft: '#cfe0f3',
+    accent: '#c89b3c', coral: '#b75049',
+    mapRamp: ['#eaf1f9', '#cfe0f3', '#9fc2e6', '#5d92cb', '#2e64a8', '#0f2c4a']
+  },
+  sage: {
+    primary: '#244a3a', mid: '#4a8166', soft: '#cee0d4',
+    accent: '#c8843c', coral: '#b75049',
+    mapRamp: ['#eef3ee', '#cee0d4', '#a3c3af', '#6ea486', '#3f7659', '#244a3a']
+  },
+  slate: {
+    primary: '#2a3340', mid: '#5a6878', soft: '#d4dae3',
+    accent: '#b87d3a', coral: '#a85048',
+    mapRamp: ['#eff1f3', '#d4dae3', '#a8b3c1', '#7d8b9d', '#4d5a6c', '#2a3340']
+  }
+};
+
+window.__theme = THEMES.navy;
+window.__density = 'regular';
+window.__period = '1y';
+window.__selected = null;
+
+Highcharts.setOptions({
+  lang: { thousandsSep: ',' },
+  chart: {
+    backgroundColor: 'transparent',
+    style: { fontFamily: '"Public Sans", system-ui, sans-serif' },
+    spacing: [4, 0, 6, 0]
+  },
+  credits: { enabled: false },
+  title: { text: '' },
+  exporting: { enabled: false },
+  accessibility: { enabled: false }
+});
+
+function hash(seed) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+const REGIONS = {
+  nova:    ['us-va-013','us-va-510','us-va-600','us-va-107','us-va-153','us-va-179','us-va-683','us-va-685','us-va-059','us-va-061','us-va-187','us-va-630','us-va-099','us-va-157'],
+  hampton: ['us-va-810','us-va-800','us-va-700','us-va-740','us-va-735','us-va-650','us-va-830','us-va-093','us-va-095','us-va-073','us-va-115','us-va-199','us-va-181','us-va-550','us-va-620','us-va-665','us-va-175','us-va-001'],
+  rva:     ['us-va-760','us-va-087','us-va-041','us-va-085','us-va-127','us-va-145','us-va-149','us-va-007','us-va-033','us-va-097','us-va-101','us-va-103','us-va-119','us-va-570','us-va-670','us-va-730'],
+  swva:    ['us-va-105','us-va-027','us-va-051','us-va-167','us-va-169','us-va-185','us-va-195','us-va-197','us-va-021','us-va-023','us-va-035','us-va-045','us-va-063','us-va-067','us-va-071','us-va-077','us-va-089','us-va-141','us-va-143','us-va-163','us-va-191','us-va-720','us-va-770','us-va-775','us-va-520','us-va-580','us-va-590','us-va-640','us-va-690','us-va-750']
+};
+function regionOf(key) {
+  for (const r of Object.keys(REGIONS)) if (REGIONS[r].includes(key)) return r;
+  return 'central';
+}
+function regionLabel(r) {
+  return ({nova:'Northern Virginia', hampton:'Hampton Roads', rva:'Richmond Metro', swva:'Southwest Virginia', central:'Central / Shenandoah'})[r];
+}
+
+function buildMapData() {
+  const features = (Highcharts.maps['countries/us/us-va-all'] || {}).features || [];
+  return features.map(f => {
+    const key = f.properties && f.properties['hc-key'];
+    if (!key) return null;
+    const r = regionOf(key);
+    const base = r === 'nova' ? 97.4 : r === 'rva' ? 96.6 : r === 'hampton' ? 96.0 : r === 'swva' ? 93.4 : 95.8;
+    const jitter = (hash(key) - 0.5) * 2.6;
+    const val = Math.max(90.5, Math.min(98.6, base + jitter));
+    return { 'hc-key': key, value: Number(val.toFixed(1)), region: r };
+  }).filter(Boolean);
+}
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function baselineSeries(opts) {
+  const { start, drift, seed } = opts;
+  let v = start;
+  const out = [];
+  for (let i = 0; i < 12; i++) {
+    const n = (hash(seed + i) - 0.5) * 0.22;
+    v += drift + n;
+    out.push(Number(Math.max(1.6, v).toFixed(2)));
+  }
+  return out;
+}
+function linePayload(selectedKey) {
+  const va = baselineSeries({ start: 3.6, drift: -0.04, seed: 'va' });
+  const us = baselineSeries({ start: 3.9, drift: -0.02, seed: 'us' });
+  let regionKey = 'nova';
+  let regionName = 'Northern Virginia';
+  let regionStart = 2.9;
+  if (selectedKey) {
+    const r = regionOf(selectedKey);
+    regionKey = r;
+    regionName = regionLabel(r);
+    regionStart = r === 'nova' ? 2.6 : r === 'rva' ? 3.2 : r === 'hampton' ? 3.5 : r === 'swva' ? 4.4 : 3.7;
+  }
+  const region = baselineSeries({ start: regionStart, drift: -0.03, seed: 'reg-' + regionKey + (window.__period || '') });
+  return { va, region, us, regionName };
+}
+
+const INDUSTRIES = [
+  { id: 'pbs',  name: 'Professional & Business' },
+  { id: 'ehs',  name: 'Education & Health' },
+  { id: 'gov',  name: 'Government' },
+  { id: 'lh',   name: 'Leisure & Hospitality' },
+  { id: 'tt',   name: 'Trade & Transportation' }
+];
+function barPayload(selectedKey) {
+  const region = selectedKey ? regionOf(selectedKey) : 'state';
+  const base = { pbs: 18400, ehs: 14200, gov: 9800, lh: 7500, tt: 5300 };
+  const mix = {
+    state:   { pbs:1.0, ehs:1.0, gov:1.0, lh:1.0, tt:1.0 },
+    nova:    { pbs:1.45, ehs:0.95, gov:1.6, lh:0.95, tt:0.85 },
+    hampton: { pbs:0.85, ehs:1.1, gov:1.55, lh:1.15, tt:1.25 },
+    rva:     { pbs:1.15, ehs:1.2, gov:1.05, lh:1.05, tt:1.0 },
+    swva:    { pbs:0.55, ehs:1.05, gov:0.7, lh:1.25, tt:1.35 },
+    central: { pbs:0.85, ehs:1.0, gov:0.85, lh:1.15, tt:1.1 }
+  };
+  const sizeFactor = selectedKey ? (0.06 + hash(selectedKey) * 0.12) : 1;
+  const m = mix[region];
+  return INDUSTRIES.map(ind => ({
+    name: ind.name,
+    y: Math.max(50, Math.round(base[ind.id] * m[ind.id] * sizeFactor / 100) * 100)
+  })).sort((a, b) => b.y - a.y);
+}
+
+let mapChart, lineChart, barChart;
+
+function tooltipBoxOpts() {
+  return {
+    useHTML: true,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderColor: 'rgba(15,44,74,0.12)',
+    borderWidth: 1,
+    borderRadius: 8,
+    shadow: { color: 'rgba(15,30,55,0.12)', offsetX: 0, offsetY: 4, opacity: 0.6, width: 8 },
+    style: { color: '#1a1d1f', fontFamily: '"Public Sans", sans-serif', fontSize: '12px' },
+    padding: 10
+  };
+}
+
+function initMap() {
+  const t = window.__theme;
+  const data = buildMapData();
+  mapChart = Highcharts.mapChart('map-chart', {
+    chart: {
+      map: 'countries/us/us-va-all',
+      margin: [4, 0, 0, 0],
+      spacing: [0, 0, 0, 0],
+      animation: false
+    },
+    mapNavigation: { enabled: false },
+    legend: { enabled: false },
+    colorAxis: {
+      min: 91, max: 98.5,
+      stops: t.mapRamp.map((c, i, arr) => [i / (arr.length - 1), c])
+    },
+    tooltip: {
+      ...tooltipBoxOpts(),
+      formatter: function() {
+        const name = (this.point && this.point.name) || '';
+        const v = this.point.value;
+        const r = regionLabel(this.point.region);
+        return `<div class="dh-tip">
+          <div class="t-name">${name}</div>
+          <div class="t-row"><span class="lbl">Employment rate</span><span class="val">${v}%</span></div>
+          <div class="t-foot">${r}</div>
+        </div>`;
+      }
+    },
+    plotOptions: {
+      map: {
+        animation: { duration: 240 },
+        states: {
+          hover: { brightness: -0.06, borderColor: '#0f2c4a', borderWidth: 1 },
+          select: { color: t.accent, borderColor: t.primary, borderWidth: 1.2 }
+        }
+      }
+    },
+    series: [{
+      data,
+      name: 'Employment rate',
+      borderColor: '#ffffff',
+      borderWidth: 0.5,
+      allowPointSelect: true,
+      cursor: 'pointer',
+      joinBy: 'hc-key',
+      point: {
+        events: {
+          click: function() {
+            const key = this['hc-key'];
+            if (window.__selected === key) {
+              window.__selected = null;
+              this.select(false, false);
+            } else {
+              window.__selected = key;
+            }
+            applyFilter();
+          }
+        }
+      }
+    }]
+  });
+
+  const sw = document.getElementById('map-legend-swatches');
+  sw.innerHTML = t.mapRamp.map(c => `<span style="background:${c}"></span>`).join('');
+}
+
+function initLine() {
+  const t = window.__theme;
+  const p = linePayload(window.__selected);
+  lineChart = Highcharts.chart('line-chart', {
+    chart: { type: 'spline', margin: [16, 8, 32, 40], animation: { duration: 380 } },
+    xAxis: {
+      categories: MONTHS,
+      tickLength: 0,
+      lineColor: '#e9e7e0',
+      labels: { style: { color: '#8a8c8f', fontSize: '11px', fontWeight: '500' } }
+    },
+    yAxis: {
+      title: { text: null },
+      labels: {
+        formatter: function() { return this.value + '%'; },
+        style: { color: '#8a8c8f', fontSize: '11px', fontWeight: '500' }
+      },
+      gridLineColor: '#f0eee9',
+      gridLineDashStyle: 'Dash',
+      min: 1.5, max: 5,
+      tickInterval: 1
+    },
+    legend: { enabled: false },
+    tooltip: {
+      ...tooltipBoxOpts(),
+      shared: true,
+      formatter: function() {
+        const rows = this.points.map(p => `
+          <div class="t-row">
+            <span class="lbl"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px;vertical-align:middle"></span>${p.series.name}</span>
+            <span class="val">${p.y.toFixed(1)}%</span>
+          </div>`).join('');
+        return `<div class="dh-tip"><div class="t-name">${this.x} 2025</div>${rows}</div>`;
+      }
+    },
+    plotOptions: {
+      spline: {
+        lineWidth: 2.2,
+        marker: { enabled: true, radius: 3, lineWidth: 1.5, lineColor: '#ffffff', states: { hover: { radius: 5 } } },
+        states: { hover: { lineWidth: 2.6, halo: { size: 6, opacity: 0.15 } } }
+      }
+    },
+    series: [
+      { name: 'Virginia', data: p.va, color: t.primary, zIndex: 3 },
+      { name: p.regionName, data: p.region, color: t.accent, zIndex: 2 },
+      { name: 'U.S. National', data: p.us, color: '#8a8c8f', dashStyle: 'ShortDash', marker: { enabled: false }, zIndex: 1, lineWidth: 1.8 }
+    ]
+  });
+
+  document.getElementById('legend-region-name').textContent = p.regionName;
+  document.getElementById('leg-va-dot').style.background = t.primary;
+  document.getElementById('leg-reg-dot').style.background = t.accent;
+}
+
+function initBar() {
+  const t = window.__theme;
+  const data = barPayload(window.__selected);
+  const total = data.reduce((s, d) => s + d.y, 0);
+  document.getElementById('bar-total').textContent = (total >= 0 ? '+' : '') + total.toLocaleString();
+
+  const cats = data.map(d => d.name);
+  const max = data[0].y;
+  const colors = data.map((_, i) => {
+    const c = t.mapRamp;
+    const idx = Math.max(0, c.length - 2 - i);
+    return c[idx];
+  });
+
+  barChart = Highcharts.chart('bar-chart', {
+    chart: { type: 'bar', margin: [10, 64, 16, 140], animation: { duration: 380 } },
+    xAxis: {
+      categories: cats,
+      tickLength: 0,
+      lineColor: 'transparent',
+      labels: { style: { color: '#1a1d1f', fontSize: '12px', fontWeight: '600' } }
+    },
+    yAxis: {
+      title: { text: null },
+      gridLineColor: '#f0eee9',
+      gridLineDashStyle: 'Dash',
+      labels: {
+        formatter: function() {
+          if (this.value === 0) return '0';
+          return (this.value / 1000) + 'K';
+        },
+        style: { color: '#b8b9bc', fontSize: '10.5px', fontWeight: '500' }
+      },
+      min: 0,
+      max: Math.ceil(max / 1000) * 1000,
+      tickInterval: max > 8000 ? 5000 : max > 2000 ? 2000 : 500
+    },
+    legend: { enabled: false },
+    tooltip: {
+      ...tooltipBoxOpts(),
+      formatter: function() {
+        return `<div class="dh-tip">
+          <div class="t-name">${this.point.name}</div>
+          <div class="t-row"><span class="lbl">Net new jobs</span><span class="val">+${this.point.y.toLocaleString()}</span></div>
+        </div>`;
+      }
+    },
+    plotOptions: {
+      bar: {
+        borderRadius: 4,
+        borderWidth: 0,
+        pointWidth: 22,
+        dataLabels: {
+          enabled: true,
+          align: 'left',
+          inside: false,
+          crop: false,
+          overflow: 'allow',
+          x: 6,
+          style: { color: '#1a1d1f', fontWeight: '600', fontSize: '11.5px', textOutline: 'none' },
+          formatter: function() { return '+' + this.y.toLocaleString(); }
+        },
+        states: { hover: { brightness: -0.08 } }
+      }
+    },
+    series: [{ name: 'Net new jobs', data: data.map((d, i) => ({ ...d, color: colors[i] })) }]
+  });
+}
+
+function applyFilter() {
+  const sel = window.__selected;
+  const bar = document.getElementById('filter-bar');
+  if (sel) {
+    const pt = mapChart.series[0].points.find(p => p['hc-key'] === sel);
+    document.getElementById('filter-name').textContent = (pt && pt.name) || sel;
+    bar.classList.remove('empty');
+    if (pt) {
+      const v = pt.value;
+      document.getElementById('kpi-va-value').innerHTML = v + '<span class="unit">%</span>';
+    }
+  } else {
+    bar.classList.add('empty');
+    document.getElementById('kpi-va-value').innerHTML = '96.8<span class="unit">%</span>';
+    mapChart.series[0].points.forEach(p => p.selected && p.select(false, false));
+  }
+  refreshLine();
+  refreshBar();
+}
+
+function refreshLine() {
+  const p = linePayload(window.__selected);
+  lineChart.series[0].setData(p.va, false);
+  lineChart.series[1].setData(p.region, false);
+  lineChart.series[1].update({ name: p.regionName }, false);
+  lineChart.series[2].setData(p.us, false);
+  lineChart.redraw();
+  document.getElementById('legend-region-name').textContent = p.regionName;
+}
+
+function refreshBar() {
+  const t = window.__theme;
+  const data = barPayload(window.__selected);
+  const total = data.reduce((s, d) => s + d.y, 0);
+  document.getElementById('bar-total').textContent = (total >= 0 ? '+' : '') + total.toLocaleString();
+  const colors = data.map((_, i) => {
+    const c = t.mapRamp;
+    const idx = Math.max(0, c.length - 2 - i);
+    return c[idx];
+  });
+  const max = data[0].y;
+  barChart.xAxis[0].setCategories(data.map(d => d.name), false);
+  barChart.yAxis[0].update({
+    max: Math.ceil(max / 1000) * 1000,
+    tickInterval: max > 8000 ? 5000 : max > 2000 ? 2000 : 500
+  }, false);
+  barChart.series[0].setData(data.map((d, i) => ({ ...d, color: colors[i] })), false);
+  barChart.redraw();
+}
+
+document.getElementById('filter-clear').addEventListener('click', () => {
+  window.__selected = null;
+  applyFilter();
+});
+
+document.getElementById('period-select').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#period-select button').forEach(b => b.classList.toggle('active', b === btn));
+  window.__period = btn.dataset.p;
+  refreshLine();
+});
+
+window.applyTheme = function(palette, density, dark) {
+  window.__theme = THEMES[palette] || THEMES.navy;
+  window.__density = density;
+
+  document.body.classList.toggle('dark', !!dark);
+
+  const t = window.__theme;
+  const root = document.documentElement.style;
+  root.setProperty('--brand-1', t.primary);
+  root.setProperty('--brand-2', t.mid);
+  root.setProperty('--brand-3', t.soft);
+  root.setProperty('--accent', t.accent);
+  root.setProperty('--coral', t.coral);
+
+  document.getElementById('dash-grid').classList.toggle('compact', density === 'compact');
+
+  if (mapChart) mapChart.destroy();
+  if (lineChart) lineChart.destroy();
+  if (barChart) barChart.destroy();
+  initMap();
+  initLine();
+  initBar();
+  applyFilter();
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  initLine();
+  initBar();
+});
+</script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "palette": "navy",
+  "density": "regular",
+  "dark": false
+}/*EDITMODE-END*/;
+
+function TweaksApp() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  React.useEffect(() => {
+    if (window.applyTheme) window.applyTheme(t.palette, t.density, t.dark);
+  }, [t.palette, t.density, t.dark]);
+
+  const paletteMap = {
+    navy:  ['#0f2c4a','#1f5fa8','#c89b3c'],
+    sage:  ['#244a3a','#4a8166','#c8843c'],
+    slate: ['#2a3340','#5a6878','#b87d3a']
+  };
+
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection label="Color scheme" />
+      <TweakColor
+        label="Palette"
+        value={paletteMap[t.palette]}
+        options={[paletteMap.navy, paletteMap.sage, paletteMap.slate]}
+        onChange={(v) => {
+          const key = v[0] === '#0f2c4a' ? 'navy' : v[0] === '#244a3a' ? 'sage' : 'slate';
+          setTweak('palette', key);
+        }}
+      />
+      <TweakToggle label="Dark mode" value={t.dark} onChange={(v) => setTweak('dark', v)} />
+
+      <TweakSection label="Layout" />
+      <TweakRadio
+        label="Density"
+        value={t.density}
+        options={['compact', 'regular']}
+        onChange={(v) => setTweak('density', v)}
+      />
+    </TweaksPanel>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('tweaks-root')).render(<TweaksApp />);
+</script>
+
+</body>
+</html>
