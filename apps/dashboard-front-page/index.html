@@ -235,6 +235,32 @@ body {
 #legend-region { display: none; }
 .has-county-selected #legend-region { display: inline-flex; }
 
+/* County picker — alphabetical select for finding small counties without
+   hunting on the map. Behaves identically to a map click. */
+.county-picker { margin: 10px 0 8px; }
+.county-picker select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bg-card);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%238a8c8f' d='M0 0h10L5 6z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 32px 9px 12px;
+  font: 500 13px/1.3 'Public Sans', sans-serif;
+  color: var(--ink-1);
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+}
+.county-picker select:focus {
+  outline: none;
+  border-color: var(--brand-1);
+  box-shadow: 0 0 0 3px rgba(0, 53, 149, 0.14);
+}
+.county-picker select:hover { border-color: var(--border-strong); }
+
 /* ─── Responsive ────────────────────────────────────────────────────────────
    Desktop-first; breakpoints stack the 3-column grid, shrink hero typography,
    widen tap targets, and trim the callout so it stays usable on phone widths. */
@@ -347,6 +373,11 @@ body {
           <span class="kpi-delta" id="kpi-us-delta">—</span>
           <span class="kpi-sub">vs. last period</span>
         </div>
+      </div>
+      <div class="county-picker">
+        <select id="county-select" aria-label="Find a county">
+          <option value="">Find a county…</option>
+        </select>
       </div>
       <div class="chart-wrap" id="map-cell"><div class="loading">Loading map…</div></div>
       <div class="map-legend">
@@ -792,6 +823,70 @@ function clearSelection() {
   applyFilter();
 }
 
+// Select a county by hc_key from anywhere (county dropdown, future entry points).
+// Sets the cross-filter state, highlights the matching point on the map, and runs
+// applyFilter — i.e. identical effect to clicking that county on the map.
+function selectCountyByKey(hcKey) {
+  if (!hcKey) { clearSelection(); return; }
+  const county = STATE.data.locality.counties.find(c => c.hc_key === hcKey);
+  if (!county) return;
+  STATE.selectedHcKey = hcKey;
+  STATE.selectedRegion = county.region;
+  STATE.selectedCounty = {
+    hcKey,
+    name: county.areaname,
+    region: county.region,
+    value: county.employment_rate
+  };
+  if (STATE.charts.map) {
+    STATE.charts.map.series[0].points.forEach(p => {
+      if (p['hc-key'] === hcKey) {
+        if (!p.selected) p.select(true, false);
+      } else if (p.selected) {
+        p.select(false, false);
+      }
+    });
+  }
+  applyFilter();
+}
+
+// Several VA localities share a name across the county/city split (Richmond,
+// Fairfax, Franklin, Roanoke). The source areaname doesn't disambiguate, so
+// suffix duplicates with "(City)" or "(County)" based on the FIPS code — VA
+// counties are 001–199, independent cities are 500+. Mutates in place so all
+// downstream consumers (dropdown, map tooltip, KPI label, filter chip) pick
+// up the disambiguated name automatically.
+function disambiguateCountyNames() {
+  if (!STATE.data) return;
+  const counties = STATE.data.locality.counties;
+  const counts = {};
+  counties.forEach(c => { counts[c.areaname] = (counts[c.areaname] || 0) + 1; });
+  counties.forEach(c => {
+    if (counts[c.areaname] > 1) {
+      const fips = parseInt(c.hc_key.replace('us-va-', ''), 10);
+      c.areaname = c.areaname + (fips >= 500 ? ' (City)' : ' (County)');
+    }
+  });
+}
+
+// Populate the county dropdown once data is loaded.
+function populateCountySelect() {
+  const select = document.getElementById('county-select');
+  if (!select || !STATE.data) return;
+  const counties = [...STATE.data.locality.counties].sort((a, b) =>
+    a.areaname.localeCompare(b.areaname)
+  );
+  const frag = document.createDocumentFragment();
+  counties.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.hc_key;
+    opt.textContent = c.areaname;
+    frag.appendChild(opt);
+  });
+  select.appendChild(frag);
+  select.addEventListener('change', (e) => selectCountyByKey(e.target.value));
+}
+
 function applyFilter() {
   const sel = STATE.selectedHcKey;
   const bar = document.getElementById('filter-bar');
@@ -812,6 +907,11 @@ function applyFilter() {
       STATE.charts.map.series[0].points.forEach(p => p.selected && p.select(false, false));
     }
   }
+
+  // Keep the county dropdown in sync — map clicks set/clear it too, not just
+  // the dropdown's own change handler.
+  const select = document.getElementById('county-select');
+  if (select) select.value = sel || '';
 
   refreshLine();
   refreshBar();
@@ -860,9 +960,11 @@ async function boot() {
       fetch('data/jobs_by_industry.json').then(r => r.json())
     ]);
     STATE.data = { locality, trend, industry };
+    disambiguateCountyNames();
     renderKpis(locality);
     initBoard();
     wireControls();
+    populateCountySelect();
   } catch (err) {
     console.error('Dashboard load failed:', err);
     document.querySelectorAll('.loading').forEach(el => {
