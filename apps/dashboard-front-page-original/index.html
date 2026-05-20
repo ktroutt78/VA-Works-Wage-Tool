@@ -595,20 +595,32 @@ function mapChartOptions(points) {
       cursor: 'pointer',
       joinBy: 'hc-key',
       point: {
+        // Use Highcharts' native select/unselect events instead of click. With
+        // allowPointSelect:true, Highcharts toggles point.selected AFTER our
+        // click handler runs — so calling this.select(false) from inside click
+        // gets immediately overridden by Highcharts' own toggle. Listening to
+        // select/unselect side-steps the ordering issue: Highcharts owns the
+        // visual state, we just sync STATE.
         events: {
-          click: function() {
+          select: function() {
+            const key = this['hc-key'];
+            STATE.selectedHcKey = key;
+            STATE.selectedRegion = this.region;
+            STATE.selectedCounty = { hcKey: key, name: this.name, region: this.region, value: this.value };
+            applyFilter();
+          },
+          unselect: function() {
+            // Only clear STATE if THIS point was the active selection. When a
+            // user clicks another county, Highcharts fires unselect on the old
+            // point before select on the new one — the subsequent select event
+            // will set STATE to the new county.
             const key = this['hc-key'];
             if (STATE.selectedHcKey === key) {
               STATE.selectedHcKey = null;
               STATE.selectedRegion = null;
               STATE.selectedCounty = null;
-              this.select(false, false);
-            } else {
-              STATE.selectedHcKey = key;
-              STATE.selectedRegion = this.region;
-              STATE.selectedCounty = { hcKey: key, name: this.name, region: this.region, value: this.value };
+              applyFilter();
             }
-            applyFilter();
           }
         }
       }
@@ -826,38 +838,29 @@ function initBoard() {
   STATE.charts.bar  = Highcharts.chart('bar-cell',  barChartOptions(d.industry, null));
 }
 
+// Both entry points delegate to Highcharts' point.select() — the select/unselect
+// event handlers on the map series are the single source of truth for STATE and
+// the cross-filter. This keeps the visual map state and our STATE in lockstep
+// regardless of who initiated the change.
 function clearSelection() {
-  STATE.selectedHcKey = null;
-  STATE.selectedRegion = null;
-  STATE.selectedCounty = null;
-  applyFilter();
+  if (!STATE.charts.map) return;
+  const sel = STATE.charts.map.series[0].points.find(p => p.selected);
+  if (sel) {
+    sel.select(false, false);
+  } else if (STATE.selectedHcKey) {
+    // Stale STATE with no visually-selected point — clean up directly.
+    STATE.selectedHcKey = null;
+    STATE.selectedRegion = null;
+    STATE.selectedCounty = null;
+    applyFilter();
+  }
 }
 
-// Select a county by hc_key from anywhere (county dropdown, future entry points).
-// Sets the cross-filter state, highlights the matching point on the map, and runs
-// applyFilter — i.e. identical effect to clicking that county on the map.
 function selectCountyByKey(hcKey) {
   if (!hcKey) { clearSelection(); return; }
-  const county = STATE.data.locality.counties.find(c => c.hc_key === hcKey);
-  if (!county) return;
-  STATE.selectedHcKey = hcKey;
-  STATE.selectedRegion = county.region;
-  STATE.selectedCounty = {
-    hcKey,
-    name: county.areaname,
-    region: county.region,
-    value: county.employment_rate
-  };
-  if (STATE.charts.map) {
-    STATE.charts.map.series[0].points.forEach(p => {
-      if (p['hc-key'] === hcKey) {
-        if (!p.selected) p.select(true, false);
-      } else if (p.selected) {
-        p.select(false, false);
-      }
-    });
-  }
-  applyFilter();
+  if (!STATE.charts.map) return;
+  const point = STATE.charts.map.series[0].points.find(p => p['hc-key'] === hcKey);
+  if (point) point.select(true, false);  // accumulate=false → single-select
 }
 
 // Several VA localities share a name across the county/city split (Richmond,
