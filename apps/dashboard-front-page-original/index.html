@@ -493,22 +493,23 @@ function formatAsOfMonth(yyyymm) {
 }
 
 function renderKpis(locality) {
-  // KPI source field `value` is unemployment rate; the card shows employment.
-  // Same inversion for delta: a +0.1pt rise in unemployment = -0.1pt fall in employment.
-  const empVa = 100 - locality.kpi.virginia.value;
-  const empUs = 100 - locality.kpi.us_average.value;
-  const deltaVa = -locality.kpi.virginia.delta_pts;
-  const deltaUs = -locality.kpi.us_average.delta_pts;
+  // KPI cards live on the "Unemployment Rate Trending" card, so show the
+  // unemployment rate directly. Color: unemployment going UP is bad (coral);
+  // going DOWN is good (default green).
+  const unVa = locality.kpi.virginia.value;
+  const unUs = locality.kpi.us_average.value;
+  const deltaVa = locality.kpi.virginia.delta_pts;
+  const deltaUs = locality.kpi.us_average.delta_pts;
 
-  document.getElementById('kpi-va-value').innerHTML = empVa.toFixed(1) + '<span class="unit">%</span>';
-  document.getElementById('kpi-us-value').innerHTML = empUs.toFixed(1) + '<span class="unit">%</span>';
+  document.getElementById('kpi-va-value').innerHTML = unVa.toFixed(1) + '<span class="unit">%</span>';
+  document.getElementById('kpi-us-value').innerHTML = unUs.toFixed(1) + '<span class="unit">%</span>';
 
   const setDelta = (id, delta) => {
     const el = document.getElementById(id);
     const sign = delta > 0 ? '+' : '';
     const arrow = delta >= 0 ? '▲' : '▼';
     el.innerHTML = '<span class="arrow">' + arrow + '</span>' + sign + delta.toFixed(1) + ' pts';
-    el.classList.toggle('down', delta < 0);
+    el.classList.toggle('down', delta > 0);  // up = more unemployment = bad
   };
   setDelta('kpi-va-delta', deltaVa);
   setDelta('kpi-us-delta', deltaUs);
@@ -913,18 +914,20 @@ function applyFilter() {
     bar.classList.remove('empty');
     document.body.classList.add('has-county-selected');
 
-    // County KPI: value + delta vs Virginia (positive = county better than state).
-    const countyVal = STATE.selectedCounty.value;
-    const stateEmp = 100 - STATE.data.locality.kpi.virginia.value;
-    const deltaVsVa = countyVal - stateEmp;
+    // County KPI: unemployment rate + delta vs Virginia unemployment.
+    // Higher county unemployment than state = worse (coral).
+    const county = STATE.data.locality.counties.find(c => c.hc_key === sel);
+    const countyUn = county ? county.unemployed_rate : (100 - STATE.selectedCounty.value);
+    const stateUn = STATE.data.locality.kpi.virginia.value;
+    const deltaVsVa = countyUn - stateUn;
     document.getElementById('kpi-county-label').textContent = STATE.selectedCounty.name;
     document.getElementById('kpi-county-value').innerHTML =
-      countyVal.toFixed(1) + '<span class="unit">%</span>';
+      countyUn.toFixed(1) + '<span class="unit">%</span>';
     const deltaEl = document.getElementById('kpi-county-delta');
     const sign = deltaVsVa > 0 ? '+' : '';
     const arrow = deltaVsVa >= 0 ? '▲' : '▼';
     deltaEl.innerHTML = '<span class="arrow">' + arrow + '</span>' + sign + deltaVsVa.toFixed(1) + ' pts';
-    deltaEl.classList.toggle('down', deltaVsVa < 0);
+    deltaEl.classList.toggle('down', deltaVsVa > 0);  // higher unemployment than state = bad
   } else {
     bar.classList.add('empty');
     document.body.classList.remove('has-county-selected');
