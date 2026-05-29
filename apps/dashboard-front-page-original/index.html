@@ -159,6 +159,9 @@ body {
 .kpi-label {
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--ink-3);
+  /* Reserve two lines for every header so the big % always aligns across cards,
+     whether the label is one line (Virginia/U.S.) or two (long county names). */
+  line-height: 1.3; min-height: 2.6em;
 }
 .kpi-value {
   font-size: 30px; font-weight: 700; letter-spacing: -0.025em;
@@ -359,7 +362,7 @@ body {
 
     <section class="card">
       <div class="card-head">
-        <h2 class="card-title">Employment Rate by Locality</h2>
+        <h2 class="card-title">Unemployment Rate by Locality</h2>
         <span class="card-sub" id="map-sub">—</span>
       </div>
       <div class="county-picker">
@@ -371,7 +374,7 @@ body {
       <div class="map-legend">
         <span>Lower</span>
         <span class="swatch-row" id="map-legend-swatches"></span>
-        <span>Higher employment</span>
+        <span>Higher unemployment</span>
       </div>
     </section>
 
@@ -436,13 +439,21 @@ const BRAND_PRIMARY = '#003595';
 const BRAND_ACCENT  = '#c89b3c';
 const INK_3 = '#8a8c8f';
 
-const REGION_LABELS = {
-  nova: 'Northern Virginia',
-  rva:  'Richmond Metro',
-  hampton: 'Hampton Roads',
-  swva: 'Southwest Virginia',
-  central: 'Central / Shenandoah'
-};
+// LWDA code -> display name, built from the data at load time. Q1 tags every
+// county with its lwda_code (`region`) + lwda_short_name; Q3 regions carry the
+// matching key + label. Region scheme is the 14 Virginia LWDAs.
+let REGION_LABELS = {};
+
+function buildRegionLabels(locality, industry) {
+  const map = {};
+  (locality.counties || []).forEach(c => {
+    if (c.region != null && c.lwda_short_name) map[c.region] = c.lwda_short_name;
+  });
+  (industry.regions || []).forEach(r => {
+    if (r.key != null && r.label) map[r.key] = r.label;
+  });
+  return map;
+}
 
 const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -522,34 +533,39 @@ function renderKpis(locality) {
 }
 
 function buildMapPoints(counties) {
+  // Rank-based color: each point's `colorValue` is its empirical-CDF percentile
+  // (fraction of counties with rate <= this one), so the full ramp spans
+  // lowest→highest unemployment with ~equal counties per shade. VA unemployment
+  // clusters hard (58% within ±0.5pp of the 3.8% median), so a value-based scale
+  // collapses to one shade; rank spreads it for dramatic contrast. Equal rates
+  // share a shade (tie-safe). `value` stays the real rate for tooltips/selection.
+  const sorted = counties.map(c => c.unemployed_rate).filter(v => v != null).sort((a, b) => a - b);
+  const n = sorted.length;
+  const cdf = (v) => {
+    let lo = 0, hi = n;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] <= v) lo = m + 1; else hi = m; }
+    return n ? lo / n : 0;
+  };
   return counties.map(c => ({
     'hc-key': c.hc_key,
-    value: c.employment_rate,
+    value: c.unemployed_rate,
+    colorValue: c.unemployed_rate == null ? null : cdf(c.unemployed_rate),
     name: c.areaname,
     region: c.region,
     unemployedRate: c.unemployed_rate,
+    employmentRate: c.employment_rate,
     laborForce: c.labor_force,
     employed: c.employed
   }));
 }
 
 function mapChartOptions(points) {
-  // Color axis tight to actual data: lowest county → lightest color, highest →
-  // darkest. VA employment rates cluster tightly (68 of 133 counties sit in
-  // a single 1pt band around 96%), so evenly-spaced stops crush the majority
-  // into the dark end. Quantile-based stops fix this: each color covers
-  // roughly the same share of counties, so the lowest ~20% are near-white,
-  // the highest ~20% are darkest, and the visual distribution is rank-based.
-  const values = points.map(p => p.value).filter(v => v != null);
-  const axisMin = Math.min(...values);
-  const axisMax = Math.max(...values);
-  const sortedVals = [...values].sort((a, b) => a - b);
-  const range = Math.max(0.0001, axisMax - axisMin);
-  const evenStops = MAP_RAMP.map((c, i, arr) => {
-    const q = i / (arr.length - 1);
-    const v = sortedVals[Math.round(q * (sortedVals.length - 1))];
-    return [(v - axisMin) / range, c];
-  });
+  // Color runs over each point's rank percentile (colorValue, 0..1) with evenly
+  // spaced ramp stops, so each ~1/6 of counties gets one of the 6 shades —
+  // lowest unemployment = lightest, highest = darkest. Rank (not raw value)
+  // because VA unemployment clusters so tightly that a value scale washes out
+  // to a single blue; rank guarantees the full lightest→darkest contrast.
+  const stops = MAP_RAMP.map((c, i, arr) => [i / (arr.length - 1), c]);
 
   return {
     chart: {
@@ -561,9 +577,9 @@ function mapChartOptions(points) {
     mapNavigation: { enabled: false },
     legend: { enabled: false },
     colorAxis: {
-      min: axisMin,
-      max: axisMax,
-      stops: evenStops
+      min: 0,
+      max: 1,
+      stops: stops
     },
     tooltip: {
       ...tooltipBoxOpts(),
@@ -571,10 +587,8 @@ function mapChartOptions(points) {
         const p = this.point;
         return '<div class="dh-tip">'
           + '<div class="t-name">' + (p.name || '') + '</div>'
-          + '<div class="t-row"><span class="lbl">Employment rate</span><span class="val">' + fmtPct(p.value) + '</span></div>'
-          + '<div class="t-row"><span class="lbl">Unemployment</span><span class="val">' + (p.unemployedRate != null ? p.unemployedRate.toFixed(1) + '%' : '—') + '</span></div>'
+          + '<div class="t-row"><span class="lbl">Unemployment rate</span><span class="val">' + fmtPct(p.value) + '</span></div>'
           + '<div class="t-row"><span class="lbl">Labor force</span><span class="val">' + (p.laborForce || 0).toLocaleString() + '</span></div>'
-          + '<div class="t-foot">' + (REGION_LABELS[p.region] || '') + '</div>'
           + '</div>';
       }
     },
@@ -589,7 +603,8 @@ function mapChartOptions(points) {
     },
     series: [{
       data: points,
-      name: 'Employment rate',
+      name: 'Unemployment rate',
+      colorKey: 'colorValue',
       borderColor: '#ffffff',
       borderWidth: 0.5,
       allowPointSelect: true,
@@ -647,16 +662,16 @@ function lineChartOptions(trend, selectedCounty) {
     return SHORT_MONTHS[Number(mo) - 1] + (STATE.periodMonths >= 24 ? ' ’' + y.slice(2) : '');
   });
 
-  // Per-county series only when a county is selected. Prefer per-county data from
-  // trend.counties[hcKey]; fall back to the county's macro-region aggregate if the
-  // per-county slice isn't present (e.g. older JSON without the counties map).
+  // Per-county series only when a county is selected. trend.counties is an array
+  // of {hc_key, data}; STATE.trendCountyMap indexes it by hc_key for O(1) lookup.
+  // No macro-region fallback under the LWDA scheme — every county has its own NSA
+  // trend, so a missing slice just means no county line.
   let countySeries = null;
   if (selectedCounty) {
-    const countyArr = trend.counties && trend.counties[selectedCounty.hcKey];
-    const sourceArr = countyArr || trend.series[selectedCounty.region];
-    const sliced = sourceArr ? sourceArr.slice(Math.max(0, sourceArr.length - STATE.periodMonths)) : null;
+    const countyArr = STATE.trendCountyMap && STATE.trendCountyMap[selectedCounty.hcKey];
+    const sliced = countyArr ? countyArr.slice(Math.max(0, countyArr.length - STATE.periodMonths)) : null;
     countySeries = {
-      label: selectedCounty.name + (countyArr ? '' : ' (region trend)'),
+      label: selectedCounty.name,
       data: sliced
     };
     document.getElementById('legend-region-name').textContent = countySeries.label;
@@ -732,7 +747,7 @@ function lineChartOptions(trend, selectedCounty) {
 }
 
 function barChartOptions(industry, regionKey) {
-  const list = regionKey ? (industry.regions[regionKey] || []) : industry.statewide;
+  const list = regionKey ? (STATE.industryRegionMap[regionKey] || []) : industry.statewide;
   const sorted = [...list].sort((a, b) => b.jobs_added - a.jobs_added);
   const cats = sorted.map(d => d.sector);
   const total = sorted.reduce((s, d) => s + d.jobs_added, 0);
@@ -917,7 +932,7 @@ function applyFilter() {
     // County KPI: unemployment rate + delta vs Virginia unemployment.
     // Higher county unemployment than state = worse (coral).
     const county = STATE.data.locality.counties.find(c => c.hc_key === sel);
-    const countyUn = county ? county.unemployed_rate : (100 - STATE.selectedCounty.value);
+    const countyUn = county ? county.unemployed_rate : STATE.selectedCounty.value;
     const stateUn = STATE.data.locality.kpi.virginia.value;
     const deltaVsVa = countyUn - stateUn;
     document.getElementById('kpi-county-label').textContent = STATE.selectedCounty.name;
@@ -978,6 +993,12 @@ async function boot() {
       fetch('data/jobs_by_industry.json').then(r => r.json())
     ]);
     STATE.data = { locality, trend, industry };
+    // Index the array-shaped JSON for O(1) lookups by the cross-filter:
+    //   trend.counties: [{hc_key, data}]  -> hc_key -> data
+    //   industry.regions: [{key, sectors}] -> key -> sectors
+    STATE.trendCountyMap = Object.fromEntries((trend.counties || []).map(c => [c.hc_key, c.data]));
+    STATE.industryRegionMap = Object.fromEntries((industry.regions || []).map(r => [r.key, r.sectors]));
+    REGION_LABELS = buildRegionLabels(locality, industry);
     disambiguateCountyNames();
     renderKpis(locality);
     initBoard();
